@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/job_provider.dart';
+import '../providers/issue_board_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -252,6 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (_formKey.currentState!.validate()) {
                       await settings.saveBaseUrl(_urlController.text);
                       await context.read<JobProvider>().checkConfiguration();
+                      await context.read<IssueBoardProvider>().initialize();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
