@@ -21,7 +21,7 @@ A Flutter mobile app for managing Claude Code agents and GitHub issue workflows.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/ops-deck.git
+   git clone https://github.com/LeeW7/ops-deck.git
    cd ops-deck
    ```
 
@@ -107,7 +107,7 @@ lib/
 
 ## Companion Server
 
-Ops Deck requires [Claude Ops](https://github.com/YOUR_USERNAME/claude-ops) server running on your local machine or network.
+Ops Deck requires [Claude Ops](https://github.com/LeeW7/claude-ops) server running on your local machine or network.
 
 ## License
 
