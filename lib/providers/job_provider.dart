@@ -1,21 +1,27 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job_model.dart';
 import '../services/api_service.dart';
+import '../services/firestore_service.dart';
 
 class JobProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final FirestoreJobService _firestoreService = FirestoreJobService();
 
   Map<String, Job> _jobs = {};
   String? _error;
   bool _isLoading = false;
   bool _isConfigured = false;
+  bool _useFirestore = false;
   Timer? _pollingTimer;
+  StreamSubscription? _firestoreSubscription;
 
   Map<String, Job> get jobs => _jobs;
   String? get error => _error;
   bool get isLoading => _isLoading;
   bool get isConfigured => _isConfigured;
+  bool get useFirestore => _useFirestore;
 
   List<Job> get sortedJobs {
     final jobList = _jobs.values.toList();
@@ -33,12 +39,46 @@ class JobProvider with ChangeNotifier {
   List<Job> get waitingApprovalJobs =>
       sortedJobs.where((j) => j.jobStatus == JobStatus.waitingApproval).toList();
 
+  List<Job> get activeJobs =>
+      sortedJobs.where((j) => j.isActive).toList();
+
   bool get hasJobsNeedingApproval => waitingApprovalJobs.isNotEmpty;
+
+  /// Total cost across all jobs
+  double get totalCost {
+    return _jobs.values
+        .where((j) => j.cost != null)
+        .fold(0.0, (sum, j) => sum + j.cost!.totalUsd);
+  }
 
   Future<void> initialize() async {
     final baseUrl = await _apiService.getBaseUrl();
     _isConfigured = baseUrl != null && baseUrl.isNotEmpty;
+
+    // Try to enable Firestore if Firebase is initialized
+    await _checkFirestoreAvailability();
+
     notifyListeners();
+  }
+
+  Future<void> _checkFirestoreAvailability() async {
+    try {
+      // Test Firestore connection
+      await FirebaseFirestore.instance
+          .collection('jobs')
+          .limit(1)
+          .get()
+          .timeout(const Duration(seconds: 5));
+      _useFirestore = true;
+      if (kDebugMode) {
+        print('[JobProvider] Firestore available, using real-time updates');
+      }
+    } catch (e) {
+      _useFirestore = false;
+      if (kDebugMode) {
+        print('[JobProvider] Firestore not available, falling back to HTTP polling: $e');
+      }
+    }
   }
 
   Future<void> checkConfiguration() async {
@@ -47,6 +87,7 @@ class JobProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Fetch jobs using HTTP API (fallback)
   Future<void> fetchJobs() async {
     if (!_isConfigured) {
       _error = 'Server not configured';
@@ -70,6 +111,45 @@ class JobProvider with ChangeNotifier {
     }
   }
 
+  /// Start real-time updates (Firestore preferred, falls back to HTTP polling)
+  void startRealTimeUpdates() {
+    if (_useFirestore) {
+      _startFirestoreListener();
+    } else {
+      startPolling();
+    }
+  }
+
+  /// Stop all updates
+  void stopRealTimeUpdates() {
+    _firestoreSubscription?.cancel();
+    _firestoreSubscription = null;
+    stopPolling();
+  }
+
+  void _startFirestoreListener() {
+    _firestoreSubscription?.cancel();
+    _isLoading = _jobs.isEmpty;
+    _error = null;
+    if (_isLoading) notifyListeners();
+
+    _firestoreSubscription = _firestoreService.watchJobs().listen(
+      (jobs) {
+        _jobs = {for (var job in jobs) job.issueId: job};
+        _isLoading = false;
+        _error = null;
+        notifyListeners();
+      },
+      onError: (e) {
+        if (kDebugMode) {
+          print('[JobProvider] Firestore error, falling back to HTTP: $e');
+        }
+        _useFirestore = false;
+        startPolling();
+      },
+    );
+  }
+
   void startPolling() {
     stopPolling();
     fetchJobs();
@@ -85,11 +165,12 @@ class JobProvider with ChangeNotifier {
 
   Job? getJob(String issueId) => _jobs[issueId];
 
+  /// Approve a job (always uses HTTP API to communicate with server)
   Future<bool> approveJob(String jobId) async {
     try {
       final result = await _apiService.approveJob(jobId);
-      if (result) {
-        await fetchJobs(); // Refresh job list
+      if (result && !_useFirestore) {
+        await fetchJobs(); // Refresh job list if not using Firestore
       }
       return result;
     } catch (e) {
@@ -99,11 +180,12 @@ class JobProvider with ChangeNotifier {
     }
   }
 
+  /// Reject a job (always uses HTTP API to communicate with server)
   Future<bool> rejectJob(String jobId) async {
     try {
       final result = await _apiService.rejectJob(jobId);
-      if (result) {
-        await fetchJobs(); // Refresh job list
+      if (result && !_useFirestore) {
+        await fetchJobs(); // Refresh job list if not using Firestore
       }
       return result;
     } catch (e) {
@@ -115,7 +197,7 @@ class JobProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    stopPolling();
+    stopRealTimeUpdates();
     super.dispose();
   }
 }

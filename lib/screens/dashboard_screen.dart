@@ -21,7 +21,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final provider = context.read<JobProvider>();
       provider.initialize().then((_) {
         if (provider.isConfigured) {
-          provider.startPolling();
+          provider.startRealTimeUpdates();
         }
       });
     });
@@ -101,7 +101,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(width: 12),
           const Text(
-            'AGENT COMMAND CENTER',
+            'OPS DECK',
             style: TextStyle(
               fontFamily: 'monospace',
               fontWeight: FontWeight.bold,
@@ -143,7 +143,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final provider = context.read<JobProvider>();
               await provider.checkConfiguration();
               if (provider.isConfigured) {
-                provider.startPolling();
+                provider.startRealTimeUpdates();
               }
             }
           },
@@ -205,7 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final provider = context.read<JobProvider>();
                         await provider.checkConfiguration();
                         if (provider.isConfigured) {
-                          provider.startPolling();
+                          provider.startRealTimeUpdates();
                         }
                       }
                     },
