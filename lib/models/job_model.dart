@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum JobStatus { running, failed, pending, completed, waitingApproval, rejected, interrupted, approvedResume, unknown }
+enum JobStatus { running, failed, pending, completed, waitingApproval, rejected, interrupted, approvedResume, blocked, unknown }
 
 class JobCost {
   final double totalUsd;
@@ -164,12 +164,20 @@ class Job {
         return JobStatus.interrupted;
       case 'approved_resume':
         return JobStatus.approvedResume;
+      case 'blocked':
+        return JobStatus.blocked;
       default:
         return JobStatus.unknown;
     }
   }
 
   bool get needsApproval => jobStatus == JobStatus.waitingApproval;
+
+  /// Whether the job needs user attention (blocked, failed, waiting)
+  bool get needsAttention =>
+      jobStatus == JobStatus.blocked ||
+      jobStatus == JobStatus.failed ||
+      jobStatus == JobStatus.waitingApproval;
 
   bool get isActive =>
     jobStatus == JobStatus.pending ||

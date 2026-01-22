@@ -32,7 +32,7 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/api/status'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
@@ -55,7 +55,7 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/api/logs/$issueId'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
@@ -94,7 +94,7 @@ class ApiService {
             headers: {'Content-Type': 'application/json'},
             body: json.encode({'job_id': jobId}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       return response.statusCode == 200;
     } catch (e) {
@@ -116,7 +116,7 @@ class ApiService {
             headers: {'Content-Type': 'application/json'},
             body: json.encode({'job_id': jobId}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       return response.statusCode == 200;
     } catch (e) {
@@ -134,7 +134,7 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/repos'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -221,13 +221,57 @@ class ApiService {
     try {
       final response = await http
           .post(Uri.parse('$baseUrl/issues/$repo/$issueNum/proceed'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30)); // Longer timeout for job setup
 
       if (response.statusCode == 200) {
         return json.decode(response.body) as Map<String, dynamic>;
       } else {
         final data = json.decode(response.body);
         throw ApiException(data['reason'] ?? data['error']?.toString() ?? 'Failed to proceed');
+      }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Connection error: ${e.toString()}');
+    }
+  }
+
+  /// Trigger a job directly - simple endpoint that returns immediately
+  Future<Map<String, dynamic>> triggerJob({
+    required String repo,
+    required int issueNum,
+    required String issueTitle,
+    required String command,
+    String? cmdLabel,
+  }) async {
+    final baseUrl = await getBaseUrl();
+    if (baseUrl == null || baseUrl.isEmpty) {
+      throw ApiException('Server URL not configured');
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/jobs/trigger'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'repo': repo,
+              'issueNum': issueNum,
+              'issueTitle': issueTitle,
+              'command': command,
+              if (cmdLabel != null) 'cmdLabel': cmdLabel,
+            }),
+          )
+          .timeout(const Duration(seconds: 10)); // Fast - just triggers
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 409) {
+        // Job already exists and is active
+        final data = json.decode(response.body);
+        throw ApiException(data['reason'] ?? 'Job is already running or pending');
+      } else {
+        final data = json.decode(response.body);
+        throw ApiException(data['reason'] ?? data['error']?.toString() ?? 'Failed to trigger job');
       }
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -244,7 +288,7 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/issues/$repo/$issueNum/workflow'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         return json.decode(response.body) as Map<String, dynamic>;
@@ -405,6 +449,28 @@ class ApiService {
         return {'has_pr': false};
       } else {
         throw ApiException('Failed to fetch PR details: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Connection error: ${e.toString()}');
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchIssueCosts(String repo, int issueNum) async {
+    final baseUrl = await getBaseUrl();
+    if (baseUrl == null || baseUrl.isEmpty) {
+      throw ApiException('Server URL not configured');
+    }
+
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/issues/$repo/$issueNum/costs'))
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else {
+        throw ApiException('Failed to fetch costs: ${response.statusCode}');
       }
     } catch (e) {
       if (e is ApiException) rethrow;

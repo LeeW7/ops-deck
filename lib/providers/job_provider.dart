@@ -89,6 +89,7 @@ class JobProvider with ChangeNotifier {
 
   /// Fetch jobs using HTTP API (fallback)
   Future<void> fetchJobs() async {
+    print('[JobProvider] fetchJobs called'); // DEBUG
     if (!_isConfigured) {
       _error = 'Server not configured';
       notifyListeners();
@@ -96,19 +97,50 @@ class JobProvider with ChangeNotifier {
     }
 
     try {
+      final wasLoading = _isLoading;
       _isLoading = _jobs.isEmpty;
       _error = null;
-      if (_isLoading) notifyListeners();
+      if (_isLoading && !wasLoading) notifyListeners();
 
-      _jobs = await _apiService.fetchStatus();
+      final newJobs = await _apiService.fetchStatus();
       _isLoading = false;
-      _error = null;
-      notifyListeners();
+
+      // Only notify if data actually changed
+      if (_hasJobsChanged(newJobs)) {
+        _jobs = newJobs;
+        _error = null;
+        notifyListeners();
+      }
     } catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
     }
+  }
+
+  /// Check if jobs have changed (compare keys and status)
+  bool _hasJobsChanged(Map<String, Job> newJobs) {
+    if (_jobs.length != newJobs.length) {
+      debugPrint('[JobProvider] Jobs changed: count ${_jobs.length} -> ${newJobs.length}');
+      return true;
+    }
+    for (final entry in newJobs.entries) {
+      final oldJob = _jobs[entry.key];
+      if (oldJob == null) {
+        debugPrint('[JobProvider] Jobs changed: new job ${entry.key}');
+        return true;
+      }
+      if (oldJob.status != entry.value.status) {
+        debugPrint('[JobProvider] Jobs changed: ${entry.key} status ${oldJob.status} -> ${entry.value.status}');
+        return true;
+      }
+      if (oldJob.error != entry.value.error) {
+        debugPrint('[JobProvider] Jobs changed: ${entry.key} error changed');
+        return true;
+      }
+    }
+    debugPrint('[JobProvider] No changes detected');
+    return false;
   }
 
   /// Start real-time updates (Firestore preferred, falls back to HTTP polling)
@@ -153,7 +185,7 @@ class JobProvider with ChangeNotifier {
   void startPolling() {
     stopPolling();
     fetchJobs();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       fetchJobs();
     });
   }
@@ -238,7 +270,7 @@ class LogProvider with ChangeNotifier {
     _logs = '';
     _error = null;
     fetchLogs(issueId);
-    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (_currentIssueId != null) {
         fetchLogs(_currentIssueId!);
       }
