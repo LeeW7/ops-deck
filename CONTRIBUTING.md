@@ -14,7 +14,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ### Prerequisites
 
-- Flutter SDK 3.24.0 or later
+- Flutter SDK 3.29.0 or later
 - Dart SDK (included with Flutter)
 - Android Studio or VS Code with Flutter extensions
 - For iOS: macOS with Xcode
