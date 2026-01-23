@@ -198,8 +198,8 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       if (!mounted) return;
 
       setState(() {
-        _issueData = results[0] as Map<String, dynamic>;
-        _workflowState = results[1] as Map<String, dynamic>;
+        _issueData = results[0];
+        _workflowState = results[1];
         _isLoading = false;
       });
 

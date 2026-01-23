@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../models/issue_model.dart';
-import '../../models/job_model.dart';
 
 /// Card representing an issue in the Kanban board
 class IssueCard extends StatelessWidget {
@@ -15,7 +14,6 @@ class IssueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final statusColor = Color(issue.status.colorValue);
 
     return Material(
