@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
-import '../services/firestore_service.dart';
 import '../services/websocket_service.dart';
-import '../models/job_model.dart';
 import 'feedback_screen.dart';
 
 class IssueDetailScreen extends StatefulWidget {
@@ -29,10 +27,12 @@ class IssueDetailScreen extends StatefulWidget {
 class _IssueDetailScreenState extends State<IssueDetailScreen>
     with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
-  final FirestoreJobService _firestoreService = FirestoreJobService();
   final WebSocketService _wsService = WebSocketService();
   final ScrollController _liveScrollController = ScrollController();
+  final TextEditingController _inputController = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
   final List<StreamMessage> _streamMessages = [];
+  bool _isSendingInput = false;
 
   /// Process messages to combine consecutive text into paragraphs
   List<_ProcessedMessage> get _processedMessages {
@@ -87,10 +87,51 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
   void dispose() {
     _tabController.dispose();
     _liveScrollController.dispose();
+    _inputController.dispose();
+    _inputFocusNode.dispose();
     _wsSubscription?.cancel();
     _wsStateSubscription?.cancel();
     _wsService.dispose();
     super.dispose();
+  }
+
+  /// Send user input to the running Claude process
+  void _sendUserInput() {
+    final text = _inputController.text.trim();
+    if (text.isEmpty || _isSendingInput) return;
+
+    setState(() {
+      _isSendingInput = true;
+    });
+
+    // Send via WebSocket
+    _wsService.send({
+      'type': 'user_input',
+      'content': text,
+    });
+
+    // Add user message to stream for display
+    setState(() {
+      _streamMessages.add(StreamMessage(
+        type: 'userInput',
+        jobId: _activeJobId ?? '',
+        timestamp: DateTime.now(),
+        data: TextData(text),
+      ));
+      _inputController.clear();
+      _isSendingInput = false;
+    });
+
+    // Scroll to bottom
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_liveScrollController.hasClients) {
+        _liveScrollController.animateTo(
+          _liveScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   void _setupWebSocket() {
@@ -148,11 +189,14 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
     });
 
     try {
-      // Fetch issue details from server (GitHub data) and workflow from Firestore in parallel
+      // Fetch issue details from server (GitHub data) and workflow from server API in parallel
       final results = await Future.wait([
         _apiService.fetchIssueDetails(widget.repo, widget.issueNum),
-        _calculateWorkflowFromFirestore(),
+        _apiService.fetchWorkflowState(widget.repo, widget.issueNum),
       ]);
+
+      if (!mounted) return;
+
       setState(() {
         _issueData = results[0] as Map<String, dynamic>;
         _workflowState = results[1] as Map<String, dynamic>;
@@ -162,9 +206,10 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       // Check for active job to connect WebSocket
       _checkForActiveJob();
 
-      // Fetch costs in background (don't block UI) - also from Firestore
+      // Fetch costs in background (don't block UI)
       _fetchCosts();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -173,24 +218,12 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
   }
 
   void _checkForActiveJob() {
-    // Build job ID from repo slug and issue number
-    final repoSlug = widget.repo.split('/').last;
-    final currentPhase = _workflowState?['current_phase'] as String?;
+    // Get the active job ID directly from the server workflow state
+    final activeJobId = _workflowState?['active_job_id'] as String?;
 
-    // Map phases to job commands
-    String? command;
-    if (currentPhase == 'planning') {
-      command = 'plan-headless';
-    } else if (currentPhase == 'implementing') {
-      command = 'implement-headless';
-    } else if (currentPhase == 'reviewing' || currentPhase == 'review') {
-      command = 'review-headless';
-    }
-
-    if (command != null) {
-      final jobId = '$repoSlug-${widget.issueNum}-$command';
-      if (_activeJobId != jobId) {
-        _activeJobId = jobId;
+    if (activeJobId != null && activeJobId.isNotEmpty) {
+      if (_activeJobId != activeJobId) {
+        _activeJobId = activeJobId;
         _streamMessages.clear();
         _connectToActiveJob();
       }
@@ -200,10 +233,10 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
     }
   }
 
-  /// Refresh workflow state after job completion - uses Firestore directly
+  /// Refresh workflow state after job completion - uses server API
   Future<void> _refreshWorkflowState() async {
     try {
-      final workflow = await _calculateWorkflowFromFirestore();
+      final workflow = await _apiService.fetchWorkflowState(widget.repo, widget.issueNum);
       if (mounted) {
         setState(() {
           _workflowState = workflow;
@@ -234,95 +267,12 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
     }
   }
 
-  /// Calculate workflow state from Firestore jobs (mirrors server logic)
-  Future<Map<String, dynamic>> _calculateWorkflowFromFirestore() async {
-    final jobs = await _firestoreService.getJobsForIssue(widget.repo, widget.issueNum);
-    final repoSlug = widget.repo.split('/').last;
-
-    // Find jobs by type
-    final planJob = jobs.where((j) => j.issueId == '$repoSlug-${widget.issueNum}-plan-headless').firstOrNull;
-    final implementJob = jobs.where((j) => j.issueId == '$repoSlug-${widget.issueNum}-implement-headless').firstOrNull;
-    final retroJob = jobs.where((j) => j.issueId == '$repoSlug-${widget.issueNum}-retrospective-headless').firstOrNull;
-
-    // Count revisions
-    final revisionCount = jobs.where((j) =>
-        j.issueId.startsWith('$repoSlug-${widget.issueNum}-revise-headless') &&
-        j.status == 'completed').length;
-
-    // Check if revise is running
-    final reviseRunning = jobs.any((j) =>
-        j.issueId.startsWith('$repoSlug-${widget.issueNum}-revise-headless') &&
-        (j.status == 'pending' || j.status == 'running'));
-
-    // Build completed phases
-    final completedPhases = <String>[];
-    if (planJob?.status == 'completed') completedPhases.add('plan');
-    if (implementJob?.status == 'completed') completedPhases.add('implement');
-    if (retroJob?.status == 'completed') completedPhases.add('retrospective');
-
-    // Determine current phase and next action
-    if (completedPhases.contains('retrospective')) {
-      return {
-        'current_phase': 'complete',
-        'next_action': null,
-        'next_action_label': null,
-        'completed_phases': completedPhases,
-        'revision_count': revisionCount,
-        'can_revise': false,
-        'can_merge': false,
-      };
-    } else if (completedPhases.contains('implement')) {
-      final retroRunning = retroJob?.status == 'pending' || retroJob?.status == 'running';
-      return {
-        'current_phase': 'review',
-        'next_action': retroRunning ? null : 'retrospective',
-        'next_action_label': retroRunning ? null : 'cmd:retrospective-headless',
-        'completed_phases': completedPhases,
-        'revision_count': revisionCount,
-        'can_revise': !reviseRunning && !retroRunning,
-        'can_merge': !reviseRunning && !retroRunning,
-      };
-    } else if (completedPhases.contains('plan')) {
-      final implementRunning = implementJob?.status == 'pending' || implementJob?.status == 'running';
-      final planRunning = planJob?.status == 'running';
-      return {
-        'current_phase': implementRunning ? 'implementing' : (planRunning ? 'planning' : 'plan_complete'),
-        'next_action': (implementRunning || planRunning) ? null : 'implement',
-        'next_action_label': (implementRunning || planRunning) ? null : 'cmd:implement-headless',
-        'completed_phases': completedPhases,
-        'revision_count': revisionCount,
-        'can_revise': !implementRunning && !planRunning,
-        'can_merge': false,
-      };
-    } else if (planJob?.status == 'pending' || planJob?.status == 'running') {
-      return {
-        'current_phase': 'planning',
-        'next_action': null,
-        'next_action_label': null,
-        'completed_phases': completedPhases,
-        'revision_count': revisionCount,
-        'can_revise': false,
-        'can_merge': false,
-      };
-    } else {
-      return {
-        'current_phase': 'new',
-        'next_action': 'plan',
-        'next_action_label': 'cmd:plan-headless',
-        'completed_phases': completedPhases,
-        'revision_count': revisionCount,
-        'can_revise': false,
-        'can_merge': false,
-      };
-    }
-  }
-
   Future<void> _fetchCosts() async {
     setState(() => _isLoadingCosts = true);
 
     try {
-      // Use Firestore directly for costs
-      final costs = await _firestoreService.getCostsForIssue(widget.repo, widget.issueNum);
+      // Use server API for costs
+      final costs = await _apiService.fetchIssueCosts(widget.repo, widget.issueNum);
       if (mounted) {
         setState(() {
           _costData = costs;
@@ -922,6 +872,85 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
                     },
                   ),
           ),
+
+          // Input bar (only show when job is active and connected)
+          if (isActivePhase && connectionState == WsConnectionState.connected)
+            _buildInputBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputBar() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: const BoxDecoration(
+        color: Color(0xFF161B22),
+        border: Border(
+          top: BorderSide(color: Color(0xFF30363D)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _inputController,
+              focusNode: _inputFocusNode,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                color: Color(0xFFC9D1D9),
+              ),
+              decoration: InputDecoration(
+                hintText: 'Send a message to Claude...',
+                hintStyle: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 14,
+                  color: Color(0xFF6E7681),
+                ),
+                filled: true,
+                fillColor: const Color(0xFF0D1117),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF30363D)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF30363D)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF58A6FF)),
+                ),
+              ),
+              onSubmitted: (_) => _sendUserInput(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            onPressed: _isSendingInput ? null : _sendUserInput,
+            icon: _isSendingInput
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF58A6FF),
+                    ),
+                  )
+                : const Icon(
+                    Icons.send_rounded,
+                    color: Color(0xFF58A6FF),
+                  ),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF21262D),
+              padding: const EdgeInsets.all(12),
+            ),
+          ),
         ],
       ),
     );
@@ -1034,9 +1063,46 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
         final error = (message.data as ErrorData?)?.error ?? 'Unknown error';
         return _buildSystemMessage('Error: $error', const Color(0xFFDA3633));
 
+      case 'userInput':
+        final text = (message.data as TextData?)?.content ?? '';
+        return _buildUserInputMessage(text);
+
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildUserInputMessage(String text) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F3A5F),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF58A6FF).withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.person_outline,
+            size: 16,
+            color: Color(0xFF58A6FF),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: Color(0xFFC9D1D9),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSystemMessage(String text, Color color) {

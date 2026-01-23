@@ -43,6 +43,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         imageQuality: 85,
       );
 
+      if (!mounted) return;
+
       if (pickedFile != null) {
         setState(() {
           _selectedImage = File(pickedFile.path);
@@ -146,6 +148,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       if (_selectedImage != null) {
         setState(() => _isUploadingImage = true);
         imageUrl = await _apiService.uploadImage(_selectedImage!);
+        if (!mounted) return;
         setState(() => _isUploadingImage = false);
       }
 

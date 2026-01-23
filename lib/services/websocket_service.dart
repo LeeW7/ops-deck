@@ -1,19 +1,67 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// WebSocket error types for better error handling
+enum WsErrorType {
+  connectionFailed,
+  connectionLost,
+  timeout,
+  invalidMessage,
+  serverError,
+  unknown,
+}
+
+/// Typed WebSocket exception
+class WsException implements Exception {
+  final WsErrorType type;
+  final String message;
+  final Object? originalError;
+
+  WsException(this.type, this.message, [this.originalError]);
+
+  @override
+  String toString() => 'WsException($type): $message';
+
+  /// User-friendly error message
+  String get userMessage {
+    switch (type) {
+      case WsErrorType.connectionFailed:
+        return 'Unable to connect to server';
+      case WsErrorType.connectionLost:
+        return 'Connection to server lost';
+      case WsErrorType.timeout:
+        return 'Connection timed out';
+      case WsErrorType.invalidMessage:
+        return 'Received invalid data from server';
+      case WsErrorType.serverError:
+        return 'Server error occurred';
+      case WsErrorType.unknown:
+        return 'An unexpected error occurred';
+    }
+  }
+}
+
 /// Service for connecting to job streaming WebSocket
 class WebSocketService {
   static const String _baseUrlKey = 'server_base_url';
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _initialReconnectDelay = Duration(seconds: 1);
+  static const Duration _maxReconnectDelay = Duration(seconds: 30);
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   String? _currentJobId;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  bool _shouldReconnect = false;
 
   final _messageController = StreamController<StreamMessage>.broadcast();
   final _connectionStateController = StreamController<WsConnectionState>.broadcast();
+  final _errorController = StreamController<WsException>.broadcast();
   bool _isDisposed = false;
 
   /// Stream of messages from the WebSocket
@@ -22,17 +70,28 @@ class WebSocketService {
   /// Stream of connection state changes
   Stream<WsConnectionState> get connectionState => _connectionStateController.stream;
 
+  /// Stream of errors (for UI to display)
+  Stream<WsException> get errors => _errorController.stream;
+
   /// Current connection state
   WsConnectionState _state = WsConnectionState.disconnected;
   WsConnectionState get state => _state;
 
+  /// Current reconnect attempt count (for UI display)
+  int get reconnectAttempts => _reconnectAttempts;
+
   /// Connect to a job's WebSocket stream
-  Future<bool> connect(String jobId) async {
+  Future<bool> connect(String jobId, {bool autoReconnect = true}) async {
     // Disconnect from any existing connection
     await disconnect();
 
     final wsUrl = await _getWebSocketUrl(jobId);
     if (wsUrl == null) {
+      final error = WsException(
+        WsErrorType.connectionFailed,
+        'Server URL not configured',
+      );
+      _emitError(error);
       _updateState(WsConnectionState.error);
       return false;
     }
@@ -40,6 +99,8 @@ class WebSocketService {
     try {
       _updateState(WsConnectionState.connecting);
       _currentJobId = jobId;
+      _shouldReconnect = autoReconnect;
+      _reconnectAttempts = 0;
 
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
@@ -48,32 +109,142 @@ class WebSocketService {
           _handleMessage(data);
         },
         onError: (error) {
-          if (kDebugMode) {
-            print('[WebSocket] Error: $error');
-          }
-          _updateState(WsConnectionState.error);
+          _handleConnectionError(error);
         },
         onDone: () {
           if (kDebugMode) {
-            print('[WebSocket] Connection closed');
+            print('[WebSocket] Connection closed for job $_currentJobId');
           }
           _updateState(WsConnectionState.disconnected);
+          _scheduleReconnect();
         },
       );
 
       _updateState(WsConnectionState.connected);
+      _reconnectAttempts = 0; // Reset on successful connection
       return true;
+    } on SocketException catch (e) {
+      final error = WsException(
+        WsErrorType.connectionFailed,
+        'Network error: ${e.message}',
+        e,
+      );
+      _handleConnectionFailure(error);
+      return false;
+    } on WebSocketChannelException catch (e) {
+      final error = WsException(
+        WsErrorType.connectionFailed,
+        'WebSocket error: ${e.message}',
+        e,
+      );
+      _handleConnectionFailure(error);
+      return false;
+    } on TimeoutException catch (e) {
+      final error = WsException(
+        WsErrorType.timeout,
+        'Connection timed out',
+        e,
+      );
+      _handleConnectionFailure(error);
+      return false;
     } catch (e) {
-      if (kDebugMode) {
-        print('[WebSocket] Failed to connect: $e');
-      }
-      _updateState(WsConnectionState.error);
+      final error = WsException(
+        WsErrorType.unknown,
+        'Failed to connect: $e',
+        e,
+      );
+      _handleConnectionFailure(error);
       return false;
     }
   }
 
+  void _handleConnectionError(dynamic error) {
+    WsException wsError;
+
+    if (error is SocketException) {
+      wsError = WsException(
+        WsErrorType.connectionLost,
+        'Network connection lost: ${error.message}',
+        error,
+      );
+    } else if (error is WebSocketChannelException) {
+      wsError = WsException(
+        WsErrorType.connectionLost,
+        'WebSocket connection error: ${error.message}',
+        error,
+      );
+    } else {
+      wsError = WsException(
+        WsErrorType.unknown,
+        'Connection error: $error',
+        error,
+      );
+    }
+
+    if (kDebugMode) {
+      print('[WebSocket] Error: ${wsError.message}');
+    }
+    _emitError(wsError);
+    _updateState(WsConnectionState.error);
+    _scheduleReconnect();
+  }
+
+  void _handleConnectionFailure(WsException error) {
+    if (kDebugMode) {
+      print('[WebSocket] ${error.message}');
+    }
+    _emitError(error);
+    _updateState(WsConnectionState.error);
+    _scheduleReconnect();
+  }
+
+  void _emitError(WsException error) {
+    if (!_isDisposed) {
+      _errorController.add(error);
+    }
+  }
+
+  void _scheduleReconnect() {
+    if (!_shouldReconnect || _isDisposed || _currentJobId == null) return;
+
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      if (kDebugMode) {
+        print('[WebSocket] Max reconnect attempts reached ($_maxReconnectAttempts)');
+      }
+      _emitError(WsException(
+        WsErrorType.connectionFailed,
+        'Failed to reconnect after $_maxReconnectAttempts attempts',
+      ));
+      return;
+    }
+
+    _reconnectTimer?.cancel();
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s (capped at 30s)
+    final delay = Duration(
+      milliseconds: (_initialReconnectDelay.inMilliseconds *
+          (1 << _reconnectAttempts)).clamp(0, _maxReconnectDelay.inMilliseconds),
+    );
+
+    _reconnectAttempts++;
+
+    if (kDebugMode) {
+      print('[WebSocket] Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
+    }
+
+    _reconnectTimer = Timer(delay, () {
+      if (_shouldReconnect && !_isDisposed && _currentJobId != null) {
+        connect(_currentJobId!, autoReconnect: true);
+      }
+    });
+  }
+
   /// Disconnect from WebSocket
   Future<void> disconnect() async {
+    _shouldReconnect = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
     _subscription?.cancel();
     _subscription = null;
 
@@ -81,6 +252,7 @@ class WebSocketService {
     _channel = null;
 
     _currentJobId = null;
+    _reconnectAttempts = 0;
     _updateState(WsConnectionState.disconnected);
   }
 
@@ -103,6 +275,16 @@ class WebSocketService {
       final message = StreamMessage.fromJson(decoded);
       if (!_isDisposed) {
         _messageController.add(message);
+      }
+    } on FormatException catch (e) {
+      if (kDebugMode) {
+        print('[WebSocket] Invalid JSON received: $e');
+        print('[WebSocket] Raw data: ${data.toString().substring(0, (data.toString().length).clamp(0, 200))}...');
+      }
+      // Don't emit error for parse failures - just log them
+    } on TypeError catch (e) {
+      if (kDebugMode) {
+        print('[WebSocket] Message type error: $e');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -149,6 +331,7 @@ class WebSocketService {
     disconnect();
     _messageController.close();
     _connectionStateController.close();
+    _errorController.close();
   }
 }
 
@@ -497,14 +680,19 @@ class ResultData {
 /// Connect once on app start to receive all job status updates
 class GlobalEventsService {
   static const String _baseUrlKey = 'server_base_url';
+  static const int _maxReconnectAttempts = 10; // More attempts for global service
+  static const Duration _initialReconnectDelay = Duration(seconds: 1);
+  static const Duration _maxReconnectDelay = Duration(seconds: 60);
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   Timer? _pingTimer;
   Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
 
   final _eventController = StreamController<JobEvent>.broadcast();
   final _connectionStateController = StreamController<WsConnectionState>.broadcast();
+  final _errorController = StreamController<WsException>.broadcast();
   bool _isDisposed = false;
   bool _shouldReconnect = true;
 
@@ -514,9 +702,15 @@ class GlobalEventsService {
   /// Stream of connection state changes
   Stream<WsConnectionState> get connectionState => _connectionStateController.stream;
 
+  /// Stream of errors (for UI display)
+  Stream<WsException> get errors => _errorController.stream;
+
   /// Current connection state
   WsConnectionState _state = WsConnectionState.disconnected;
   WsConnectionState get state => _state;
+
+  /// Current reconnect attempt count (for UI display)
+  int get reconnectAttempts => _reconnectAttempts;
 
   /// Connect to global events WebSocket
   Future<bool> connect() async {
@@ -526,6 +720,11 @@ class GlobalEventsService {
 
     final wsUrl = await _getWebSocketUrl();
     if (wsUrl == null) {
+      final error = WsException(
+        WsErrorType.connectionFailed,
+        'Server URL not configured',
+      );
+      _emitError(error);
       _updateState(WsConnectionState.error);
       return false;
     }
@@ -541,11 +740,7 @@ class GlobalEventsService {
           _handleMessage(data);
         },
         onError: (error) {
-          if (kDebugMode) {
-            print('[GlobalEvents] Error: $error');
-          }
-          _updateState(WsConnectionState.error);
-          _scheduleReconnect();
+          _handleConnectionError(error);
         },
         onDone: () {
           if (kDebugMode) {
@@ -560,17 +755,81 @@ class GlobalEventsService {
       _startPingTimer();
 
       _updateState(WsConnectionState.connected);
+      _reconnectAttempts = 0; // Reset on successful connection
       if (kDebugMode) {
         print('[GlobalEvents] Connected to $wsUrl');
       }
       return true;
-    } catch (e) {
-      if (kDebugMode) {
-        print('[GlobalEvents] Failed to connect: $e');
-      }
-      _updateState(WsConnectionState.error);
-      _scheduleReconnect();
+    } on SocketException catch (e) {
+      final error = WsException(
+        WsErrorType.connectionFailed,
+        'Network error: ${e.message}',
+        e,
+      );
+      _handleConnectionFailure(error);
       return false;
+    } on WebSocketChannelException catch (e) {
+      final error = WsException(
+        WsErrorType.connectionFailed,
+        'WebSocket error: ${e.message}',
+        e,
+      );
+      _handleConnectionFailure(error);
+      return false;
+    } catch (e) {
+      final error = WsException(
+        WsErrorType.unknown,
+        'Failed to connect: $e',
+        e,
+      );
+      _handleConnectionFailure(error);
+      return false;
+    }
+  }
+
+  void _handleConnectionError(dynamic error) {
+    WsException wsError;
+
+    if (error is SocketException) {
+      wsError = WsException(
+        WsErrorType.connectionLost,
+        'Network connection lost: ${error.message}',
+        error,
+      );
+    } else if (error is WebSocketChannelException) {
+      wsError = WsException(
+        WsErrorType.connectionLost,
+        'WebSocket connection error: ${error.message}',
+        error,
+      );
+    } else {
+      wsError = WsException(
+        WsErrorType.unknown,
+        'Connection error: $error',
+        error,
+      );
+    }
+
+    if (kDebugMode) {
+      print('[GlobalEvents] Error: ${wsError.message}');
+    }
+    _emitError(wsError);
+    _updateState(WsConnectionState.error);
+    _scheduleReconnect();
+  }
+
+  void _handleConnectionFailure(WsException error) {
+    if (kDebugMode) {
+      print('[GlobalEvents] ${error.message}');
+    }
+    _emitError(error);
+    _updateState(WsConnectionState.error);
+    _scheduleReconnect();
+  }
+
+  void _emitError(WsException error) {
+    if (!_isDisposed) {
+      _errorController.add(error);
     }
   }
 
@@ -581,6 +840,7 @@ class GlobalEventsService {
     _reconnectTimer = null;
     _pingTimer?.cancel();
     _pingTimer = null;
+    _reconnectAttempts = 0;
 
     _subscription?.cancel();
     _subscription = null;
@@ -589,6 +849,14 @@ class GlobalEventsService {
     _channel = null;
 
     _updateState(WsConnectionState.disconnected);
+  }
+
+  /// Reset reconnection state and attempt to connect again
+  /// Call this when the user manually triggers a refresh
+  void resetAndReconnect() {
+    _reconnectAttempts = 0;
+    _shouldReconnect = true;
+    connect();
   }
 
   void _handleMessage(dynamic data) {
@@ -605,6 +873,14 @@ class GlobalEventsService {
       final event = JobEvent.fromJson(decoded);
       if (!_isDisposed) {
         _eventController.add(event);
+      }
+    } on FormatException catch (e) {
+      if (kDebugMode) {
+        print('[GlobalEvents] Invalid JSON received: $e');
+      }
+    } on TypeError catch (e) {
+      if (kDebugMode) {
+        print('[GlobalEvents] Message type error: $e');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -632,12 +908,35 @@ class GlobalEventsService {
   void _scheduleReconnect() {
     if (!_shouldReconnect || _isDisposed) return;
 
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      if (kDebugMode) {
+        print('[GlobalEvents] Max reconnect attempts reached ($_maxReconnectAttempts)');
+      }
+      _emitError(WsException(
+        WsErrorType.connectionFailed,
+        'Failed to reconnect after $_maxReconnectAttempts attempts. Pull down to retry.',
+      ));
+      // Reset attempts so user can manually trigger reconnect
+      _reconnectAttempts = 0;
+      return;
+    }
+
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 5), () {
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s (capped at 60s)
+    final delay = Duration(
+      milliseconds: (_initialReconnectDelay.inMilliseconds *
+          (1 << _reconnectAttempts)).clamp(0, _maxReconnectDelay.inMilliseconds),
+    );
+
+    _reconnectAttempts++;
+
+    if (kDebugMode) {
+      print('[GlobalEvents] Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
+    }
+
+    _reconnectTimer = Timer(delay, () {
       if (_shouldReconnect && !_isDisposed) {
-        if (kDebugMode) {
-          print('[GlobalEvents] Attempting reconnect...');
-        }
         connect();
       }
     });
@@ -669,6 +968,7 @@ class GlobalEventsService {
     disconnect();
     _eventController.close();
     _connectionStateController.close();
+    _errorController.close();
   }
 }
 

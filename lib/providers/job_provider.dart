@@ -1,27 +1,65 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job_model.dart';
 import '../services/api_service.dart';
 import '../services/firestore_service.dart';
+
+/// Tracks error state with context
+class ProviderError {
+  final String message;
+  final ApiErrorType? type;
+  final bool isRetryable;
+  final DateTime timestamp;
+
+  ProviderError({
+    required this.message,
+    this.type,
+    this.isRetryable = false,
+  }) : timestamp = DateTime.now();
+
+  factory ProviderError.fromException(Object e) {
+    if (e is ApiException) {
+      return ProviderError(
+        message: e.userMessage,
+        type: e.type,
+        isRetryable: e.isRetryable,
+      );
+    }
+    return ProviderError(message: e.toString());
+  }
+
+  /// Whether this error is stale (older than 30 seconds)
+  bool get isStale => DateTime.now().difference(timestamp).inSeconds > 30;
+}
 
 class JobProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final FirestoreJobService _firestoreService = FirestoreJobService();
 
   Map<String, Job> _jobs = {};
-  String? _error;
+  ProviderError? _error;
   bool _isLoading = false;
   bool _isConfigured = false;
   bool _useFirestore = false;
   Timer? _pollingTimer;
   StreamSubscription? _firestoreSubscription;
+  DateTime? _lastSuccessfulFetch;
 
   Map<String, Job> get jobs => _jobs;
-  String? get error => _error;
+  ProviderError? get errorState => _error;
+  String? get error => _error?.message;
   bool get isLoading => _isLoading;
   bool get isConfigured => _isConfigured;
   bool get useFirestore => _useFirestore;
+
+  /// Whether the data may be stale (last fetch was more than 1 minute ago)
+  bool get isDataStale {
+    if (_lastSuccessfulFetch == null) return true;
+    return DateTime.now().difference(_lastSuccessfulFetch!).inMinutes > 1;
+  }
+
+  /// Whether the current error is retryable
+  bool get canRetry => _error?.isRetryable ?? false;
 
   List<Job> get sortedJobs {
     final jobList = _jobs.values.toList();
@@ -62,22 +100,11 @@ class JobProvider with ChangeNotifier {
   }
 
   Future<void> _checkFirestoreAvailability() async {
-    try {
-      // Test Firestore connection
-      await FirebaseFirestore.instance
-          .collection('jobs')
-          .limit(1)
-          .get()
-          .timeout(const Duration(seconds: 5));
-      _useFirestore = true;
-      if (kDebugMode) {
-        print('[JobProvider] Firestore available, using real-time updates');
-      }
-    } catch (e) {
-      _useFirestore = false;
-      if (kDebugMode) {
-        print('[JobProvider] Firestore not available, falling back to HTTP polling: $e');
-      }
+    // Jobs are now stored in SQLite on the server, not Firestore
+    // Always use HTTP polling to get jobs from the server API
+    _useFirestore = false;
+    if (kDebugMode) {
+      print('[JobProvider] Using HTTP polling (jobs stored in SQLite)');
     }
   }
 
@@ -89,9 +116,14 @@ class JobProvider with ChangeNotifier {
 
   /// Fetch jobs using HTTP API (fallback)
   Future<void> fetchJobs() async {
-    print('[JobProvider] fetchJobs called'); // DEBUG
+    if (kDebugMode) {
+      print('[JobProvider] fetchJobs called');
+    }
     if (!_isConfigured) {
-      _error = 'Server not configured';
+      _error = ProviderError(
+        message: 'Server not configured. Go to Settings.',
+        type: ApiErrorType.notConfigured,
+      );
       notifyListeners();
       return;
     }
@@ -99,21 +131,38 @@ class JobProvider with ChangeNotifier {
     try {
       final wasLoading = _isLoading;
       _isLoading = _jobs.isEmpty;
-      _error = null;
+      // Clear stale errors on new fetch attempt
+      if (_error?.isStale == true) _error = null;
       if (_isLoading && !wasLoading) notifyListeners();
 
       final newJobs = await _apiService.fetchStatus();
       _isLoading = false;
+      _lastSuccessfulFetch = DateTime.now();
 
       // Only notify if data actually changed
       if (_hasJobsChanged(newJobs)) {
         _jobs = newJobs;
         _error = null;
         notifyListeners();
+      } else if (_error != null) {
+        // Clear error on successful fetch even if data didn't change
+        _error = null;
+        notifyListeners();
       }
     } catch (e) {
       _isLoading = false;
-      _error = e.toString();
+      _error = ProviderError.fromException(e);
+      if (kDebugMode) {
+        print('[JobProvider] Fetch error: ${_error?.message}');
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Clear the current error
+  void clearError() {
+    if (_error != null) {
+      _error = null;
       notifyListeners();
     }
   }
@@ -206,7 +255,7 @@ class JobProvider with ChangeNotifier {
       }
       return result;
     } catch (e) {
-      _error = e.toString();
+      _error = ProviderError.fromException(e);
       notifyListeners();
       return false;
     }
@@ -221,7 +270,7 @@ class JobProvider with ChangeNotifier {
       }
       return result;
     } catch (e) {
-      _error = e.toString();
+      _error = ProviderError.fromException(e);
       notifyListeners();
       return false;
     }
@@ -238,28 +287,50 @@ class LogProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
 
   String _logs = '';
-  String? _error;
+  ProviderError? _error;
   bool _isLoading = false;
   Timer? _pollingTimer;
   String? _currentIssueId;
+  int _consecutiveErrors = 0;
 
   String get logs => _logs;
-  String? get error => _error;
+  ProviderError? get errorState => _error;
+  String? get error => _error?.message;
   bool get isLoading => _isLoading;
+  bool get canRetry => _error?.isRetryable ?? false;
 
   Future<void> fetchLogs(String issueId) async {
     try {
       _isLoading = _logs.isEmpty;
-      _error = null;
+      // Clear stale errors
+      if (_error?.isStale == true) _error = null;
       if (_isLoading) notifyListeners();
 
       _logs = await _apiService.fetchLogs(issueId);
       _isLoading = false;
       _error = null;
+      _consecutiveErrors = 0;
       notifyListeners();
     } catch (e) {
       _isLoading = false;
-      _error = e.toString();
+      _consecutiveErrors++;
+      _error = ProviderError.fromException(e);
+
+      // Stop polling if too many consecutive errors
+      if (_consecutiveErrors >= 3 && _pollingTimer != null) {
+        if (kDebugMode) {
+          print('[LogProvider] Stopping polling after $_consecutiveErrors consecutive errors');
+        }
+        stopPolling();
+      }
+      notifyListeners();
+    }
+  }
+
+  void clearError() {
+    if (_error != null) {
+      _error = null;
+      _consecutiveErrors = 0;
       notifyListeners();
     }
   }
@@ -358,7 +429,7 @@ class IssueProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isEnhancing = false;
   bool _isCreating = false;
-  String? _error;
+  ProviderError? _error;
   String? _successMessage;
 
   List<Map<String, String>> get repos => _repos;
@@ -368,8 +439,10 @@ class IssueProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isEnhancing => _isEnhancing;
   bool get isCreating => _isCreating;
-  String? get error => _error;
+  ProviderError? get errorState => _error;
+  String? get error => _error?.message;
   String? get successMessage => _successMessage;
+  bool get canRetry => _error?.isRetryable ?? false;
 
   Future<void> fetchRepos() async {
     _isLoading = true;
@@ -382,7 +455,7 @@ class IssueProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _isLoading = false;
-      _error = e.toString();
+      _error = ProviderError.fromException(e);
       notifyListeners();
     }
   }
@@ -406,7 +479,7 @@ class IssueProvider with ChangeNotifier {
 
   Future<void> enhanceWithAI() async {
     if (_title.isEmpty && _body.isEmpty) {
-      _error = 'Please enter a title or description first';
+      _error = ProviderError(message: 'Please enter a title or description first');
       notifyListeners();
       return;
     }
@@ -423,19 +496,19 @@ class IssueProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _isEnhancing = false;
-      _error = e.toString();
+      _error = ProviderError.fromException(e);
       notifyListeners();
     }
   }
 
   Future<bool> createIssue() async {
     if (_selectedRepo == null || _selectedRepo!.isEmpty) {
-      _error = 'Please select a repository';
+      _error = ProviderError(message: 'Please select a repository');
       notifyListeners();
       return false;
     }
     if (_title.isEmpty) {
-      _error = 'Please enter a title';
+      _error = ProviderError(message: 'Please enter a title');
       notifyListeners();
       return false;
     }
@@ -456,15 +529,17 @@ class IssueProvider with ChangeNotifier {
       return true;
     } catch (e) {
       _isCreating = false;
-      _error = e.toString();
+      _error = ProviderError.fromException(e);
       notifyListeners();
       return false;
     }
   }
 
   void clearError() {
-    _error = null;
-    notifyListeners();
+    if (_error != null) {
+      _error = null;
+      notifyListeners();
+    }
   }
 
   void clearForm() {
