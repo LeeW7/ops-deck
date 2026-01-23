@@ -3,10 +3,15 @@ import 'package:flutter/foundation.dart';
 import '../models/issue_model.dart';
 import '../models/job_model.dart';
 import '../services/api_service.dart';
+import '../services/websocket_service.dart';
+import '../services/job_cache_service.dart';
 
 /// Provider for the issue-centric Kanban board
+/// Uses WebSocket for real-time updates, SQLite cache for instant startup
 class IssueBoardProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final GlobalEventsService _globalEvents = GlobalEventsService();
+  final JobCacheService _cache = JobCacheService();
 
   Map<String, Issue> _issues = {};
   Set<String> _selectedRepos = {};
@@ -14,7 +19,10 @@ class IssueBoardProvider with ChangeNotifier {
   String? _error;
   bool _isLoading = false;
   bool _isConfigured = false;
+  bool _cacheLoaded = false;
   Timer? _pollingTimer;
+  StreamSubscription? _eventsSubscription;
+  StreamSubscription? _connectionSubscription;
 
   // Getters
   Map<String, Issue> get issues => _issues;
@@ -23,6 +31,7 @@ class IssueBoardProvider with ChangeNotifier {
   String? get error => _error;
   bool get isLoading => _isLoading;
   bool get isConfigured => _isConfigured;
+  bool get isWebSocketConnected => _globalEvents.state == WsConnectionState.connected;
 
   /// Get all issues sorted by last activity time
   List<Issue> get allIssues {
@@ -68,21 +77,211 @@ class IssueBoardProvider with ChangeNotifier {
     final baseUrl = await _apiService.getBaseUrl();
     _isConfigured = baseUrl != null && baseUrl.isNotEmpty;
 
+    // Load cached data first for instant UI
+    await _loadFromCache();
+
     if (_isConfigured) {
-      await Future.wait([
-        fetchRepos(),
-        fetchJobs(),
-      ]);
+      await fetchRepos();
+      // Connect to WebSocket for real-time updates
+      _connectWebSocket();
+      // Fetch fresh data in background
+      fetchJobs();
     }
 
     notifyListeners();
   }
 
+  /// Load jobs from local cache for instant startup
+  Future<void> _loadFromCache() async {
+    try {
+      final cachedJobs = await _cache.getAllJobs();
+      if (cachedJobs.isNotEmpty) {
+        final jobsMap = {for (var job in cachedJobs) job.issueId: job};
+        _issues = _aggregateJobsIntoIssues(jobsMap);
+        _cacheLoaded = true;
+        if (kDebugMode) {
+          print('[IssueBoardProvider] Loaded ${cachedJobs.length} jobs from cache');
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Cache load error: $e');
+      }
+    }
+  }
+
+  /// Save jobs to cache
+  Future<void> _saveToCache(List<Job> jobs) async {
+    try {
+      await _cache.saveJobs(jobs);
+      await _cache.updateLastSyncTime();
+      // Clean up old jobs periodically
+      await _cache.deleteOldJobs(keepDays: 30);
+    } catch (e) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Cache save error: $e');
+      }
+    }
+  }
+
+  /// Connect to global WebSocket for real-time job events
+  void _connectWebSocket() {
+    // Listen for connection state changes
+    _connectionSubscription = _globalEvents.connectionState.listen((state) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] WebSocket state: $state');
+      }
+      notifyListeners();
+    });
+
+    // Listen for job events
+    _eventsSubscription = _globalEvents.events.listen(_handleJobEvent);
+
+    // Connect
+    _globalEvents.connect();
+  }
+
+  /// Handle incoming job event from WebSocket
+  void _handleJobEvent(JobEvent event) {
+    if (kDebugMode) {
+      print('[IssueBoardProvider] Received event: ${event.type} for ${event.job.id}');
+    }
+
+    final job = event.job;
+    final repoSlug = job.repo.split('/').last;
+    final issueKey = '$repoSlug-${job.issueNum}';
+
+    switch (event.type) {
+      case JobEventType.jobCreated:
+      case JobEventType.jobStatusChanged:
+      case JobEventType.jobCompleted:
+      case JobEventType.jobFailed:
+        // Update or create the issue with new job status
+        _updateIssueFromEvent(issueKey, job);
+        // Update cache with new status
+        _cache.updateJobStatus(job.id, job.status);
+        notifyListeners();
+        break;
+      case JobEventType.unknown:
+        break;
+    }
+  }
+
+  /// Update issue state from a job event
+  void _updateIssueFromEvent(String issueKey, JobEventData jobData) {
+    // Get existing issue or create placeholder
+    var issue = _issues[issueKey];
+    final now = DateTime.now();
+
+    if (issue == null) {
+      // Create new issue from job data
+      final newJob = Job(
+        issueId: jobData.id,
+        repo: jobData.repo,
+        repoSlug: jobData.repo.split('/').last,
+        issueNum: jobData.issueNum,
+        issueTitle: jobData.issueTitle,
+        command: jobData.command,
+        status: jobData.status,
+        startTime: now.millisecondsSinceEpoch ~/ 1000,
+        logPath: '',
+        localPath: '',
+        fullCommand: '',
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      issue = Issue.fromJobs(
+        issueNum: jobData.issueNum,
+        repo: jobData.repo,
+        jobs: [newJob],
+        completedPhases: [],
+      );
+      _issues[issueKey] = issue;
+    } else {
+      // Update existing issue's job list
+      final updatedJobs = <Job>[];
+      bool jobFound = false;
+
+      for (final j in issue.jobs) {
+        if (j.issueId == jobData.id) {
+          // Update existing job with new status
+          updatedJobs.add(Job(
+            issueId: j.issueId,
+            repo: j.repo,
+            repoSlug: j.repoSlug,
+            issueNum: j.issueNum,
+            issueTitle: j.issueTitle,
+            command: j.command,
+            status: jobData.status,
+            startTime: j.startTime,
+            completedTime: j.completedTime,
+            error: j.error,
+            logPath: j.logPath,
+            localPath: j.localPath,
+            fullCommand: j.fullCommand,
+            cost: j.cost,
+            createdAt: j.createdAt,
+            updatedAt: now,
+          ));
+          jobFound = true;
+        } else {
+          updatedJobs.add(j);
+        }
+      }
+
+      // Add new job if not found
+      if (!jobFound) {
+        updatedJobs.add(Job(
+          issueId: jobData.id,
+          repo: jobData.repo,
+          repoSlug: jobData.repo.split('/').last,
+          issueNum: jobData.issueNum,
+          issueTitle: jobData.issueTitle,
+          command: jobData.command,
+          status: jobData.status,
+          startTime: now.millisecondsSinceEpoch ~/ 1000,
+          logPath: '',
+          localPath: '',
+          fullCommand: '',
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+
+      // Recalculate completed phases
+      final completedPhases = <String>[];
+      for (final j in updatedJobs) {
+        if (j.jobStatus == JobStatus.completed) {
+          if (j.command == 'plan-headless' && !completedPhases.contains('plan')) {
+            completedPhases.add('plan');
+          } else if (j.command == 'implement-headless' && !completedPhases.contains('implement')) {
+            completedPhases.add('implement');
+          } else if (j.command == 'retrospective-headless' && !completedPhases.contains('retrospective')) {
+            completedPhases.add('retrospective');
+          }
+        }
+      }
+
+      _issues[issueKey] = Issue.fromJobs(
+        issueNum: issue.issueNum,
+        repo: issue.repo,
+        jobs: updatedJobs,
+        completedPhases: completedPhases,
+      );
+    }
+  }
+
   /// Fetch available repositories
   Future<void> fetchRepos() async {
     try {
-      _availableRepos = await _apiService.fetchRepos();
-      notifyListeners();
+      final newRepos = await _apiService.fetchRepos();
+      // Only notify if repos changed
+      if (_availableRepos.length != newRepos.length) {
+        _availableRepos = newRepos;
+        notifyListeners();
+      }
     } catch (e) {
       // Silently fail - repos are optional
     }
@@ -97,20 +296,49 @@ class IssueBoardProvider with ChangeNotifier {
     }
 
     try {
-      _isLoading = _issues.isEmpty;
-      _error = null;
-      if (_isLoading) notifyListeners();
+      final wasEmpty = _issues.isEmpty && !_cacheLoaded;
+      if (wasEmpty && !_isLoading) {
+        _isLoading = true;
+        _error = null;
+        notifyListeners();
+      }
 
       final jobs = await _apiService.fetchStatus();
-      _issues = _aggregateJobsIntoIssues(jobs);
+      final newIssues = _aggregateJobsIntoIssues(jobs);
+
+      // Save to cache in background
+      _saveToCache(jobs.values.toList());
+
+      // Check what changed
+      final wasLoading = _isLoading;
+      final dataChanged = _hasIssuesChanged(newIssues);
+
       _isLoading = false;
-      _error = null;
-      notifyListeners();
+
+      // Notify if loading state changed OR data changed
+      if (wasLoading || dataChanged) {
+        _issues = newIssues;
+        _error = null;
+        notifyListeners();
+      }
     } catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
     }
+  }
+
+  /// Check if issues have changed
+  bool _hasIssuesChanged(Map<String, Issue> newIssues) {
+    if (_issues.length != newIssues.length) return true;
+    for (final entry in newIssues.entries) {
+      final oldIssue = _issues[entry.key];
+      if (oldIssue == null) return true;
+      if (oldIssue.status != entry.value.status) return true;
+      if (oldIssue.currentPhase != entry.value.currentPhase) return true;
+      if (oldIssue.jobs.length != entry.value.jobs.length) return true;
+    }
+    return false;
   }
 
   /// Aggregate jobs into issues
@@ -209,11 +437,36 @@ class IssueBoardProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Start polling for updates
+  /// Start real-time updates (WebSocket + infrequent HTTP sync)
+  void startRealTimeUpdates() {
+    // Ensure WebSocket is connected
+    if (_globalEvents.state != WsConnectionState.connected) {
+      _connectWebSocket();
+    }
+
+    // Do initial fetch
+    fetchJobs();
+
+    // Start very infrequent polling as backup (60 seconds)
+    // This catches any missed WebSocket events
+    startPolling();
+  }
+
+  /// Stop all real-time updates
+  void stopRealTimeUpdates() {
+    _eventsSubscription?.cancel();
+    _eventsSubscription = null;
+    _connectionSubscription?.cancel();
+    _connectionSubscription = null;
+    _globalEvents.disconnect();
+    stopPolling();
+  }
+
+  /// Start polling for updates (infrequent backup only)
   void startPolling() {
     stopPolling();
-    fetchJobs();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    // Very infrequent polling - just a backup for missed WebSocket events
+    _pollingTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       fetchJobs();
     });
   }
@@ -227,11 +480,36 @@ class IssueBoardProvider with ChangeNotifier {
   /// Get a specific issue
   Issue? getIssue(String key) => _issues[key];
 
-  /// Proceed with issue (trigger next phase)
+  /// Proceed with issue (trigger next phase) - legacy method
   Future<bool> proceedWithIssue(String repo, int issueNum) async {
     try {
       await _apiService.proceedWithIssue(repo, issueNum);
       await fetchJobs(); // Refresh
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Trigger a specific job directly
+  Future<bool> triggerJob({
+    required String repo,
+    required int issueNum,
+    required String issueTitle,
+    required String command,
+    String? cmdLabel,
+  }) async {
+    try {
+      await _apiService.triggerJob(
+        repo: repo,
+        issueNum: issueNum,
+        issueTitle: issueTitle,
+        command: command,
+        cmdLabel: cmdLabel,
+      );
+      // No need to fetchJobs - WebSocket will push the update
       return true;
     } catch (e) {
       _error = e.toString();
@@ -274,7 +552,9 @@ class IssueBoardProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    stopPolling();
+    stopRealTimeUpdates();
+    _globalEvents.dispose();
+    _cache.close();
     super.dispose();
   }
 }

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../services/websocket_service.dart';
 import 'feedback_screen.dart';
 
 class IssueDetailScreen extends StatefulWidget {
@@ -22,19 +24,162 @@ class IssueDetailScreen extends StatefulWidget {
   State<IssueDetailScreen> createState() => _IssueDetailScreenState();
 }
 
-class _IssueDetailScreenState extends State<IssueDetailScreen> {
+class _IssueDetailScreenState extends State<IssueDetailScreen>
+    with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
+  final WebSocketService _wsService = WebSocketService();
+  final ScrollController _liveScrollController = ScrollController();
+  final TextEditingController _inputController = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
+  final List<StreamMessage> _streamMessages = [];
+  bool _isSendingInput = false;
+
+  /// Process messages to combine consecutive text into paragraphs
+  List<_ProcessedMessage> get _processedMessages {
+    final result = <_ProcessedMessage>[];
+    StringBuffer? textBuffer;
+
+    for (final msg in _streamMessages) {
+      if (msg.type == 'assistantText') {
+        final text = (msg.data as TextData?)?.content ?? '';
+        textBuffer ??= StringBuffer();
+        textBuffer.write(text);
+      } else {
+        // Flush any accumulated text
+        if (textBuffer != null && textBuffer.isNotEmpty) {
+          result.add(_ProcessedMessage.text(textBuffer.toString()));
+          textBuffer = null;
+        }
+        result.add(_ProcessedMessage.message(msg));
+      }
+    }
+
+    // Flush remaining text
+    if (textBuffer != null && textBuffer.isNotEmpty) {
+      result.add(_ProcessedMessage.text(textBuffer.toString()));
+    }
+
+    return result;
+  }
+
   Map<String, dynamic>? _issueData;
   Map<String, dynamic>? _workflowState;
+  Map<String, dynamic>? _costData;
   bool _isLoading = true;
+  bool _isLoadingCosts = false;
   bool _isProceeding = false;
   bool _isMerging = false;
   String? _error;
+  String? _activeJobId;
+  late TabController _tabController;
+  StreamSubscription? _wsSubscription;
+  StreamSubscription? _wsStateSubscription;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _fetchIssueDetails();
+    _setupWebSocket();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _liveScrollController.dispose();
+    _inputController.dispose();
+    _inputFocusNode.dispose();
+    _wsSubscription?.cancel();
+    _wsStateSubscription?.cancel();
+    _wsService.dispose();
+    super.dispose();
+  }
+
+  /// Send user input to the running Claude process
+  void _sendUserInput() {
+    final text = _inputController.text.trim();
+    if (text.isEmpty || _isSendingInput) return;
+
+    setState(() {
+      _isSendingInput = true;
+    });
+
+    // Send via WebSocket
+    _wsService.send({
+      'type': 'user_input',
+      'content': text,
+    });
+
+    // Add user message to stream for display
+    setState(() {
+      _streamMessages.add(StreamMessage(
+        type: 'userInput',
+        jobId: _activeJobId ?? '',
+        timestamp: DateTime.now(),
+        data: TextData(text),
+      ));
+      _inputController.clear();
+      _isSendingInput = false;
+    });
+
+    // Scroll to bottom
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_liveScrollController.hasClients) {
+        _liveScrollController.animateTo(
+          _liveScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _setupWebSocket() {
+    _wsSubscription = _wsService.messages.listen((message) {
+      if (mounted) {
+        setState(() {
+          _streamMessages.add(message);
+        });
+        // Auto-scroll to bottom
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_liveScrollController.hasClients) {
+            _liveScrollController.animateTo(
+              _liveScrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 100),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+
+        // When job completes, refresh everything
+        if (message.type == 'result') {
+          _refreshWorkflowState();
+        }
+
+        // Check for status message indicating completion
+        final data = message.data;
+        if (data is StatusData) {
+          final status = data.status.toLowerCase();
+          if (status == 'completed' || status == 'failed' || status == 'blocked') {
+            // Refresh issue details from GitHub to show updated comments/plan
+            _refreshIssueDetails();
+          }
+        }
+      }
+    });
+
+    _wsStateSubscription = _wsService.connectionState.listen((state) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  void _connectToActiveJob() {
+    if (_activeJobId != null && !_wsService.isConnectedTo(_activeJobId!)) {
+      _streamMessages.clear();
+      _wsService.connect(_activeJobId!);
+    }
   }
 
   Future<void> _fetchIssueDetails() async {
@@ -44,17 +189,27 @@ class _IssueDetailScreenState extends State<IssueDetailScreen> {
     });
 
     try {
-      // Fetch both issue details and workflow state in parallel
+      // Fetch issue details from server (GitHub data) and workflow from server API in parallel
       final results = await Future.wait([
         _apiService.fetchIssueDetails(widget.repo, widget.issueNum),
         _apiService.fetchWorkflowState(widget.repo, widget.issueNum),
       ]);
+
+      if (!mounted) return;
+
       setState(() {
         _issueData = results[0];
         _workflowState = results[1];
         _isLoading = false;
       });
+
+      // Check for active job to connect WebSocket
+      _checkForActiveJob();
+
+      // Fetch costs in background (don't block UI)
+      _fetchCosts();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -62,16 +217,107 @@ class _IssueDetailScreenState extends State<IssueDetailScreen> {
     }
   }
 
+  void _checkForActiveJob() {
+    // Get the active job ID directly from the server workflow state
+    final activeJobId = _workflowState?['active_job_id'] as String?;
+
+    if (activeJobId != null && activeJobId.isNotEmpty) {
+      if (_activeJobId != activeJobId) {
+        _activeJobId = activeJobId;
+        _streamMessages.clear();
+        _connectToActiveJob();
+      }
+    } else {
+      _activeJobId = null;
+      _wsService.disconnect();
+    }
+  }
+
+  /// Refresh workflow state after job completion - uses server API
+  Future<void> _refreshWorkflowState() async {
+    try {
+      final workflow = await _apiService.fetchWorkflowState(widget.repo, widget.issueNum);
+      if (mounted) {
+        setState(() {
+          _workflowState = workflow;
+        });
+        // Also refresh costs since job completed
+        _fetchCosts();
+        // Check if we need to connect to a new active job
+        _checkForActiveJob();
+      }
+    } catch (e) {
+      // Silently fail - not critical
+    }
+  }
+
+  /// Refresh issue details from GitHub (e.g., after plan is posted as comment)
+  Future<void> _refreshIssueDetails() async {
+    try {
+      final issueData = await _apiService.fetchIssueDetails(widget.repo, widget.issueNum);
+      if (mounted) {
+        setState(() {
+          _issueData = issueData;
+        });
+      }
+      // Also refresh workflow state
+      _refreshWorkflowState();
+    } catch (e) {
+      // Silently fail - not critical for background refresh
+    }
+  }
+
+  Future<void> _fetchCosts() async {
+    setState(() => _isLoadingCosts = true);
+
+    try {
+      // Use server API for costs
+      final costs = await _apiService.fetchIssueCosts(widget.repo, widget.issueNum);
+      if (mounted) {
+        setState(() {
+          _costData = costs;
+          _isLoadingCosts = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingCosts = false);
+      }
+    }
+  }
+
   Future<void> _proceedToNextPhase() async {
+    // Get the next action label from workflow state
+    final nextActionLabel = _workflowState?['next_action_label'] as String?;
+    if (nextActionLabel == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No action available'),
+          backgroundColor: Color(0xFFDA3633),
+        ),
+      );
+      return;
+    }
+
+    // Extract command from label (e.g., "cmd:implement-headless" -> "implement-headless")
+    final command = nextActionLabel.replaceFirst('cmd:', '');
+    final nextAction = _workflowState?['next_action'] as String? ?? command;
+
     setState(() => _isProceeding = true);
 
     try {
-      final result = await _apiService.proceedWithIssue(widget.repo, widget.issueNum);
+      await _apiService.triggerJob(
+        repo: widget.repo,
+        issueNum: widget.issueNum,
+        issueTitle: _displayTitle,
+        command: command,
+        cmdLabel: nextActionLabel,
+      );
+
       if (mounted) {
-        final action = result['action'] as String? ?? 'next phase';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${_capitalizeAction(action)} job queued!'),
+            content: Text('${_capitalizeAction(nextAction)} job queued!'),
             backgroundColor: const Color(0xFF238636),
           ),
         );
@@ -246,8 +492,31 @@ class _IssueDetailScreenState extends State<IssueDetailScreen> {
             onPressed: _fetchIssueDetails,
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: const Color(0xFF00FF41),
+          labelColor: const Color(0xFF00FF41),
+          unselectedLabelColor: const Color(0xFF8B949E),
+          labelStyle: const TextStyle(
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+          tabs: const [
+            Tab(text: 'DETAILS'),
+            Tab(text: 'LIVE'),
+            Tab(text: 'COSTS'),
+          ],
+        ),
       ),
-      body: _buildBody(),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildBody(),
+          _buildLiveTab(),
+          _buildCostsTab(),
+        ],
+      ),
       bottomNavigationBar: _issueData != null && !_isLoading
           ? _buildBottomBar()
           : null,
@@ -543,6 +812,872 @@ class _IssueDetailScreenState extends State<IssueDetailScreen> {
     } catch (e) {
       return isoDate;
     }
+  }
+
+  Widget _buildLiveTab() {
+    final connectionState = _wsService.state;
+    final currentPhase = _workflowState?['current_phase'] as String? ?? 'new';
+    final isActivePhase = ['planning', 'implementing', 'reviewing'].contains(currentPhase);
+
+    return Container(
+      color: const Color(0xFF0D1117),
+      child: Column(
+        children: [
+          // Connection status bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFF161B22),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFF30363D)),
+              ),
+            ),
+            child: Row(
+              children: [
+                _buildConnectionIndicator(connectionState),
+                const SizedBox(width: 8),
+                Text(
+                  _getConnectionStatusText(connectionState, isActivePhase),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: Color(0xFF8B949E),
+                  ),
+                ),
+                const Spacer(),
+                if (_activeJobId != null)
+                  Text(
+                    _activeJobId!.split('-').last.replaceAll('-headless', '').toUpperCase(),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      color: Color(0xFF58A6FF),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Terminal output
+          Expanded(
+            child: _streamMessages.isEmpty
+                ? _buildEmptyLiveState(isActivePhase)
+                : ListView.builder(
+                    controller: _liveScrollController,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _processedMessages.length,
+                    itemBuilder: (context, index) {
+                      return _buildProcessedMessageWidget(_processedMessages[index]);
+                    },
+                  ),
+          ),
+
+          // Input bar (only show when job is active and connected)
+          if (isActivePhase && connectionState == WsConnectionState.connected)
+            _buildInputBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputBar() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: const BoxDecoration(
+        color: Color(0xFF161B22),
+        border: Border(
+          top: BorderSide(color: Color(0xFF30363D)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _inputController,
+              focusNode: _inputFocusNode,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                color: Color(0xFFC9D1D9),
+              ),
+              decoration: InputDecoration(
+                hintText: 'Send a message to Claude...',
+                hintStyle: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 14,
+                  color: Color(0xFF6E7681),
+                ),
+                filled: true,
+                fillColor: const Color(0xFF0D1117),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF30363D)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF30363D)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF58A6FF)),
+                ),
+              ),
+              onSubmitted: (_) => _sendUserInput(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            onPressed: _isSendingInput ? null : _sendUserInput,
+            icon: _isSendingInput
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF58A6FF),
+                    ),
+                  )
+                : const Icon(
+                    Icons.send_rounded,
+                    color: Color(0xFF58A6FF),
+                  ),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF21262D),
+              padding: const EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectionIndicator(WsConnectionState state) {
+    Color color;
+    switch (state) {
+      case WsConnectionState.connected:
+        color = const Color(0xFF238636);
+        break;
+      case WsConnectionState.connecting:
+        color = const Color(0xFFD29922);
+        break;
+      case WsConnectionState.error:
+        color = const Color(0xFFDA3633);
+        break;
+      case WsConnectionState.disconnected:
+        color = const Color(0xFF8B949E);
+        break;
+    }
+
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+
+  String _getConnectionStatusText(WsConnectionState state, bool isActivePhase) {
+    switch (state) {
+      case WsConnectionState.connected:
+        return 'Connected - streaming live';
+      case WsConnectionState.connecting:
+        return 'Connecting...';
+      case WsConnectionState.error:
+        return 'Connection error';
+      case WsConnectionState.disconnected:
+        return isActivePhase ? 'Disconnected' : 'No active job';
+    }
+  }
+
+  Widget _buildEmptyLiveState(bool isActivePhase) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isActivePhase ? Icons.hourglass_empty : Icons.terminal,
+            size: 48,
+            color: const Color(0xFF30363D),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            isActivePhase ? 'Waiting for output...' : 'No active job',
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 14,
+              color: Color(0xFF8B949E),
+            ),
+          ),
+          if (!isActivePhase) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Start a workflow phase to see live output',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Color(0xFF6E7681),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStreamMessageWidget(StreamMessage message) {
+    switch (message.type) {
+      case 'connected':
+        return _buildSystemMessage('Connected to job stream', const Color(0xFF238636));
+
+      case 'statusChange':
+        final status = (message.data as StatusData?)?.status ?? 'unknown';
+        return _buildSystemMessage('Status: $status', const Color(0xFF58A6FF));
+
+      case 'assistantText':
+        final text = (message.data as TextData?)?.content ?? '';
+        return _buildTextMessage(text);
+
+      case 'assistantThinking':
+        return _buildThinkingMessage();
+
+      case 'toolUse':
+        final tool = (message.data as ToolData?)?.tool;
+        return _buildToolUseMessage(tool);
+
+      case 'toolResult':
+        final tool = (message.data as ToolData?)?.tool;
+        return _buildToolResultMessage(tool);
+
+      case 'result':
+        final result = (message.data as ResultDataWrapper?)?.result;
+        return _buildResultMessage(result);
+
+      case 'error':
+        final error = (message.data as ErrorData?)?.error ?? 'Unknown error';
+        return _buildSystemMessage('Error: $error', const Color(0xFFDA3633));
+
+      case 'userInput':
+        final text = (message.data as TextData?)?.content ?? '';
+        return _buildUserInputMessage(text);
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildUserInputMessage(String text) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F3A5F),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF58A6FF).withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.person_outline,
+            size: 16,
+            color: Color(0xFF58A6FF),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: Color(0xFFC9D1D9),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemMessage(String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Text(
+        '► $text',
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 12,
+          color: color,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextMessage(String text) {
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 13,
+          color: Color(0xFFE6EDF3),
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThinkingMessage() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B949E)),
+            ),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'Thinking...',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: Color(0xFF8B949E),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolUseMessage(ToolUseData? tool) {
+    if (tool == null) return const SizedBox.shrink();
+
+    IconData icon;
+    Color color;
+
+    switch (tool.toolName.toLowerCase()) {
+      case 'read':
+        icon = Icons.description;
+        color = const Color(0xFF58A6FF);
+        break;
+      case 'edit':
+      case 'write':
+        icon = Icons.edit;
+        color = const Color(0xFFD29922);
+        break;
+      case 'bash':
+        icon = Icons.terminal;
+        color = const Color(0xFFA371F7);
+        break;
+      case 'glob':
+      case 'grep':
+        icon = Icons.search;
+        color = const Color(0xFF3FB950);
+        break;
+      default:
+        icon = Icons.build;
+        color = const Color(0xFF8B949E);
+    }
+
+    // Check if this is an edit/write with content to show
+    final editDetails = tool.editDetails;
+
+    if (editDetails != null) {
+      return _buildEditToolWidget(tool, editDetails, icon, color);
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              tool.displayText,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: color,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditToolWidget(ToolUseData tool, EditDetails details, IconData icon, Color color) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+          childrenPadding: EdgeInsets.zero,
+          leading: Icon(icon, size: 14, color: color),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  details.isWrite ? 'Write ${details.fileName}' : 'Edit ${details.fileName}',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: color,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (details.linesAdded > 0)
+                Text(
+                  '+${details.linesAdded}',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    color: Color(0xFF3FB950),
+                  ),
+                ),
+              if (details.linesRemoved > 0) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '-${details.linesRemoved}',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    color: Color(0xFFF85149),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0D1117),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(6),
+                  bottomRight: Radius.circular(6),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Show removed content (old)
+                  if (details.oldContent != null && details.oldContent!.isNotEmpty) ...[
+                    for (final line in details.oldContent!.split('\n').take(10))
+                      Text(
+                        '- $line',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: Color(0xFFF85149),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    if (details.oldContent!.split('\n').length > 10)
+                      Text(
+                        '  ... ${details.oldContent!.split('\n').length - 10} more lines',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          color: Color(0xFF6E7681),
+                        ),
+                      ),
+                  ],
+                  // Show added content (new)
+                  if (details.newContent != null && details.newContent!.isNotEmpty) ...[
+                    for (final line in details.newContent!.split('\n').take(10))
+                      Text(
+                        '+ $line',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: Color(0xFF3FB950),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    if (details.newContent!.split('\n').length > 10)
+                      Text(
+                        '  ... ${details.newContent!.split('\n').length - 10} more lines',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          color: Color(0xFF6E7681),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolResultMessage(ToolUseData? tool) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, top: 2, bottom: 4),
+      child: Text(
+        '└─ done',
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 11,
+          color: const Color(0xFF3FB950).withOpacity(0.7),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultMessage(ResultData? result) {
+    if (result == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF238636)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.check_circle, size: 16, color: Color(0xFF238636)),
+              SizedBox(width: 8),
+              Text(
+                'COMPLETE',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Color(0xFF238636),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+          if (result.totalCostUsd != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Cost: \$${result.totalCostUsd!.toStringAsFixed(4)}',
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Color(0xFF00FF41),
+              ),
+            ),
+          ],
+          if (result.inputTokens != null && result.outputTokens != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Tokens: ${_formatTokenCount(result.inputTokens!)} in / ${_formatTokenCount(result.outputTokens!)} out',
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Color(0xFF8B949E),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCostsTab() {
+    if (_isLoadingCosts) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00FF41)),
+        ),
+      );
+    }
+
+    if (_costData == null) {
+      return const Center(
+        child: Text(
+          'No cost data available',
+          style: TextStyle(
+            fontFamily: 'monospace',
+            color: Color(0xFF8B949E),
+          ),
+        ),
+      );
+    }
+
+    final phases = (_costData!['phases'] as List<dynamic>?) ?? [];
+    final totalCost = (_costData!['total_cost'] as num?)?.toDouble() ?? 0.0;
+    final totalInputTokens = _costData!['total_input_tokens'] as int? ?? 0;
+    final totalOutputTokens = _costData!['total_output_tokens'] as int? ?? 0;
+    final totalCacheRead = _costData!['total_cache_read_tokens'] as int? ?? 0;
+    final totalCacheWrite = _costData!['total_cache_write_tokens'] as int? ?? 0;
+
+    if (phases.isEmpty) {
+      return const Center(
+        child: Text(
+          'No completed jobs yet',
+          style: TextStyle(
+            fontFamily: 'monospace',
+            color: Color(0xFF8B949E),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Total cost summary
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF238636)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'TOTAL COST',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF8B949E),
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '\$${totalCost.toStringAsFixed(4)}',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF00FF41),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildTokenStat('INPUT', totalInputTokens),
+                    _buildTokenStat('OUTPUT', totalOutputTokens),
+                    _buildTokenStat('CACHE R', totalCacheRead),
+                    _buildTokenStat('CACHE W', totalCacheWrite),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Phase breakdown header
+          const Text(
+            'COST BY PHASE',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF8B949E),
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Phase cards
+          ...phases.map((phase) => _buildPhaseCard(phase)),
+
+          const SizedBox(height: 100), // Space for bottom bar
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTokenStat(String label, int count) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 10,
+            color: Color(0xFF8B949E),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _formatTokenCount(count),
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFFE6EDF3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatTokenCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M';
+    } else if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return count.toString();
+  }
+
+  Widget _buildPhaseCard(Map<String, dynamic> phase) {
+    final phaseName = phase['phase'] as String? ?? 'Unknown';
+    final cost = (phase['cost'] as num?)?.toDouble() ?? 0.0;
+    final inputTokens = phase['input_tokens'] as int? ?? 0;
+    final outputTokens = phase['output_tokens'] as int? ?? 0;
+    final model = phase['model'] as String? ?? 'unknown';
+    final runCount = phase['run_count'] as int? ?? 1;
+
+    // Calculate percentage of total
+    final totalCost = (_costData!['total_cost'] as num?)?.toDouble() ?? 1.0;
+    final percentage = totalCost > 0 ? (cost / totalCost * 100) : 0.0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF30363D)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    phaseName.toUpperCase(),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFE6EDF3),
+                    ),
+                  ),
+                  if (runCount > 1) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF30363D),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '×$runCount',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          color: Color(0xFF8B949E),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              Text(
+                '\$${cost.toStringAsFixed(4)}',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF00FF41),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Progress bar showing percentage of total
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: percentage / 100,
+              backgroundColor: const Color(0xFF30363D),
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF238636)),
+              minHeight: 6,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${percentage.toStringAsFixed(1)}% of total',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: Color(0xFF8B949E),
+                ),
+              ),
+              Text(
+                '${_formatTokenCount(inputTokens)} in / ${_formatTokenCount(outputTokens)} out',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: Color(0xFF8B949E),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            model,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10,
+              color: Color(0xFF6E7681),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBottomBar() {
@@ -866,4 +2001,23 @@ class _IssueDetailScreenState extends State<IssueDetailScreen> {
       ),
     );
   }
+
+  Widget _buildProcessedMessageWidget(_ProcessedMessage processed) {
+    if (processed.isText) {
+      return _buildTextMessage(processed.text!);
+    } else {
+      return _buildStreamMessageWidget(processed.message!);
+    }
+  }
+}
+
+/// Helper class for processed messages (combined text or single message)
+class _ProcessedMessage {
+  final String? text;
+  final StreamMessage? message;
+
+  _ProcessedMessage.text(this.text) : message = null;
+  _ProcessedMessage.message(this.message) : text = null;
+
+  bool get isText => text != null;
 }

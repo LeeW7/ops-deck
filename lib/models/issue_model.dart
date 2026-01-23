@@ -124,6 +124,11 @@ class Issue {
       return IssueStatus.failed;
     }
 
+    // Check if any job is blocked (needs attention but not a hard failure)
+    if (jobs.any((j) => j.jobStatus == JobStatus.blocked)) {
+      return IssueStatus.needsAction;
+    }
+
     // Check if any job needs approval
     if (jobs.any((j) => j.jobStatus == JobStatus.waitingApproval)) {
       return IssueStatus.needsAction;
@@ -136,6 +141,14 @@ class Issue {
 
     // Default: needs action (user needs to trigger next phase)
     return IssueStatus.needsAction;
+  }
+
+  /// Get the blocked job (if any)
+  Job? get blockedJob {
+    return jobs.cast<Job?>().firstWhere(
+      (j) => j?.jobStatus == JobStatus.blocked,
+      orElse: () => null,
+    );
   }
 
   /// Get the latest (most recent) job

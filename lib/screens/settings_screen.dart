@@ -20,7 +20,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final settings = context.read<SettingsProvider>();
       settings.loadSettings().then((_) {
-        _urlController.text = settings.baseUrl;
+        if (mounted) {
+          _urlController.text = settings.baseUrl;
+        }
       });
     });
   }

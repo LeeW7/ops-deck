@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/job_model.dart';
 import '../providers/job_provider.dart';
+import '../services/api_service.dart';
 import 'log_screen.dart';
 import 'settings_screen.dart';
 import 'create_issue_screen.dart';
@@ -21,7 +22,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final provider = context.read<JobProvider>();
       provider.initialize().then((_) {
         if (provider.isConfigured) {
-          provider.startPolling();
+          provider.startRealTimeUpdates();
         }
       });
     });
@@ -101,7 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(width: 12),
           const Text(
-            'AGENT COMMAND CENTER',
+            'OPS DECK',
             style: TextStyle(
               fontFamily: 'monospace',
               fontWeight: FontWeight.bold,
@@ -143,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final provider = context.read<JobProvider>();
               await provider.checkConfiguration();
               if (provider.isConfigured) {
-                provider.startPolling();
+                provider.startRealTimeUpdates();
               }
             }
           },
@@ -205,7 +206,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final provider = context.read<JobProvider>();
                         await provider.checkConfiguration();
                         if (provider.isConfigured) {
-                          provider.startPolling();
+                          provider.startRealTimeUpdates();
                         }
                       }
                     },
@@ -263,14 +264,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildErrorView(String error) {
+    final provider = context.read<JobProvider>();
+    final errorState = provider.errorState;
+    final canRetry = errorState?.isRetryable ?? true;
+
+    // Choose icon and title based on error type
+    IconData errorIcon = Icons.error_outline;
+    String errorTitle = 'CONNECTION ERROR';
+
+    if (errorState != null) {
+      switch (errorState.type) {
+        case ApiErrorType.network:
+          errorIcon = Icons.wifi_off;
+          errorTitle = 'NETWORK ERROR';
+          break;
+        case ApiErrorType.timeout:
+          errorIcon = Icons.timer_off;
+          errorTitle = 'REQUEST TIMEOUT';
+          break;
+        case ApiErrorType.serverError:
+          errorIcon = Icons.cloud_off;
+          errorTitle = 'SERVER ERROR';
+          break;
+        case ApiErrorType.notConfigured:
+          errorIcon = Icons.settings;
+          errorTitle = 'NOT CONFIGURED';
+          break;
+        default:
+          break;
+      }
+    }
+
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(24),
+              constraints: const BoxConstraints(maxWidth: 400),
               decoration: BoxDecoration(
                 color: const Color(0xFF161B22),
                 borderRadius: BorderRadius.circular(16),
@@ -278,15 +311,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               child: Column(
                 children: [
-                  const Icon(
-                    Icons.error_outline,
+                  Icon(
+                    errorIcon,
                     size: 64,
-                    color: Color(0xFFF85149),
+                    color: const Color(0xFFF85149),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
-                    'CONNECTION ERROR',
-                    style: TextStyle(
+                  Text(
+                    errorTitle,
+                    style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -295,35 +328,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    error,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      color: Color(0xFF8B949E),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 100),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        error,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          color: Color(0xFF8B949E),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      context.read<JobProvider>().fetchJobs();
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('RETRY'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDA3633),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 16,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (canRetry)
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            provider.clearError();
+                            provider.fetchJobs();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('RETRY'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFDA3633),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 14,
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                      if (canRetry) const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                          );
+                        },
+                        icon: const Icon(Icons.settings),
+                        label: const Text('SETTINGS'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF8B949E),
+                          side: const BorderSide(color: Color(0xFF30363D)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 14,
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
                       ),
-                      textStyle: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    ],
                   ),
                 ],
               ),

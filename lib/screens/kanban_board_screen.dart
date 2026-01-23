@@ -40,9 +40,10 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
 
   void _initializeAndStartPolling() {
     final provider = context.read<IssueBoardProvider>();
+    provider.stopRealTimeUpdates(); // Stop any existing updates first
     provider.initialize().then((_) {
       if (provider.isConfigured) {
-        provider.startPolling();
+        provider.startRealTimeUpdates();
       }
     });
   }
@@ -50,7 +51,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    context.read<IssueBoardProvider>().stopPolling();
+    context.read<IssueBoardProvider>().stopRealTimeUpdates();
     super.dispose();
   }
 
@@ -93,10 +94,16 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
         IconButton(
           icon: const Icon(Icons.settings_outlined),
           tooltip: 'Settings',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SettingsScreen()),
-          ),
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
+            // Re-initialize after returning from settings (re-checks Firestore)
+            if (mounted) {
+              _initializeAndStartPolling();
+            }
+          },
         ),
       ],
       bottom: PreferredSize(
