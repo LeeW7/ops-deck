@@ -30,7 +30,7 @@ dependencies:
 
   # UI
   cupertino_icons: ^1.0.6
-  google_fonts: ^6.1.0
+  google_fonts: ^8.0.0
   flutter_local_notifications: ^19.5.0
   flutter_markdown: ^0.7.6
   url_launcher: ^6.2.5
