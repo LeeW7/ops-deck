@@ -8,7 +8,7 @@ import '../models/job_model.dart';
 /// Enables instant app startup and offline viewing
 class JobCacheService {
   static const String _dbName = 'ops_deck_cache.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
 
   Database? _database;
   DateTime? _lastSyncTime;
@@ -86,15 +86,45 @@ class JobCacheService {
       )
     ''');
 
+    // Hidden issues table for board management
+    await db.execute('''
+      CREATE TABLE hidden_issues (
+        issue_key TEXT PRIMARY KEY,
+        repo TEXT NOT NULL,
+        issue_num INTEGER NOT NULL,
+        issue_title TEXT NOT NULL,
+        hidden_at INTEGER NOT NULL,
+        reason TEXT DEFAULT 'user'
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_hidden_repo ON hidden_issues(repo)');
+
     if (kDebugMode) {
       print('[JobCache] Database created with version $version');
     }
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle future schema migrations here
     if (kDebugMode) {
       print('[JobCache] Upgrading database from $oldVersion to $newVersion');
+    }
+
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE hidden_issues (
+          issue_key TEXT PRIMARY KEY,
+          repo TEXT NOT NULL,
+          issue_num INTEGER NOT NULL,
+          issue_title TEXT NOT NULL,
+          hidden_at INTEGER NOT NULL,
+          reason TEXT DEFAULT 'user'
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_hidden_repo ON hidden_issues(repo)');
+
+      if (kDebugMode) {
+        print('[JobCache] Added hidden_issues table');
+      }
     }
   }
 
@@ -268,6 +298,70 @@ class JobCacheService {
       await db.close();
       _database = null;
     }
+  }
+
+  // ============================================================================
+  // Hidden Issues Methods
+  // ============================================================================
+
+  /// Hide an issue from the board
+  Future<void> hideIssue({
+    required String issueKey,
+    required String repo,
+    required int issueNum,
+    required String issueTitle,
+    String reason = 'user',
+  }) async {
+    final db = await database;
+    await db.insert(
+      'hidden_issues',
+      {
+        'issue_key': issueKey,
+        'repo': repo,
+        'issue_num': issueNum,
+        'issue_title': issueTitle,
+        'hidden_at': DateTime.now().millisecondsSinceEpoch,
+        'reason': reason,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    if (kDebugMode) {
+      print('[JobCache] Hidden issue: $issueKey');
+    }
+  }
+
+  /// Unhide an issue (restore to board)
+  Future<void> unhideIssue(String issueKey) async {
+    final db = await database;
+    await db.delete(
+      'hidden_issues',
+      where: 'issue_key = ?',
+      whereArgs: [issueKey],
+    );
+
+    if (kDebugMode) {
+      print('[JobCache] Restored issue: $issueKey');
+    }
+  }
+
+  /// Get all hidden issue keys
+  Future<Set<String>> getHiddenIssueKeys() async {
+    final db = await database;
+    final result = await db.query('hidden_issues', columns: ['issue_key']);
+    return result.map((r) => r['issue_key'] as String).toSet();
+  }
+
+  /// Check if a specific issue is hidden
+  Future<bool> isIssueHidden(String issueKey) async {
+    final db = await database;
+    final result = await db.query(
+      'hidden_issues',
+      where: 'issue_key = ?',
+      whereArgs: [issueKey],
+      limit: 1,
+    );
+    return result.isNotEmpty;
   }
 
   // ============================================================================

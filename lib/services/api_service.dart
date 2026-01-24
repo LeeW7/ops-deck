@@ -442,6 +442,23 @@ class ApiService {
       throw _handleErrorResponse(response, 'fetch costs');
     }
   }
+
+  /// Close an issue on GitHub
+  Future<void> closeIssue(String repo, int issueNum, {String reason = 'completed'}) async {
+    // Encode the repo path (owner/repo) for URL
+    final encodedRepo = Uri.encodeComponent(repo);
+    final response = await _postWithRetry(
+      '/issues/$encodedRepo/$issueNum/close',
+      body: {'reason': reason},
+      maxRetries: 0, // Don't retry destructive operations
+    );
+
+    if (response.statusCode == 200) {
+      return;
+    } else {
+      throw _handleErrorResponse(response, 'close issue');
+    }
+  }
 }
 
 /// Typed API exception with error categorization
