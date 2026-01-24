@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=430, initial-scale=1.0">
+  <title>Issue #12 - Mobile Mockups</title>
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <style>
+    :root {
+      --color-bg-primary: #0D1117;
+      --color-bg-secondary: #161B22;
+      --color-bg-tertiary: #21262D;
+      --color-border: #30363D;
+      --color-text-primary: #E6EDF3;
+      --color-text-secondary: #8B949E;
+      --color-status-needs-action: #F0883E;
+      --color-status-running: #3FB950;
+      --color-status-failed: #F85149;
+      --color-status-done: #8B949E;
+      --color-primary: #238636;
+      --color-danger: #DA3633;
+      --spacing-1: 4px;
+      --spacing-2: 8px;
+      --spacing-3: 12px;
+      --spacing-4: 16px;
+      --spacing-6: 24px;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #1a1a2e;
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+    }
+
+    h1 {
+      color: #fff;
+      font-size: 24px;
+      text-align: center;
+    }
+
+    h2 {
+      color: #8B949E;
+      font-size: 16px;
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .mockup-container {
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .phone-frame {
+      width: 430px;
+      height: 932px;
+      background: var(--color-bg-primary);
+      border-radius: 40px;
+      border: 3px solid #333;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .status-bar {
+      height: 47px;
+      background: var(--color-bg-primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 var(--spacing-6);
+      color: var(--color-text-primary);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .status-bar-icons {
+      display: flex;
+      gap: var(--spacing-2);
+      align-items: center;
+    }
+
+    .app-header {
+      background: var(--color-bg-secondary);
+      padding: var(--spacing-4);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .app-title {
+      color: var(--color-text-primary);
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: var(--spacing-3);
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-md);
+      background: transparent;
+      border: none;
+      color: var(--color-text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .kanban-board {
+      flex: 1;
+      overflow-x: auto;
+      padding: var(--spacing-4);
+      display: flex;
+      gap: var(--spacing-4);
+    }
+
+    .kanban-column {
+      min-width: 280px;
+      background: var(--color-bg-secondary);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-border);
+    }
+
+    .column-header {
+      padding: var(--spacing-3) var(--spacing-4);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .column-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .column-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .column-count {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-tertiary);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      margin-left: auto;
+    }
+
+    .column-content {
+      padding: var(--spacing-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-3);
+    }
+
+    .issue-card {
+      background: var(--color-bg-tertiary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      padding: var(--spacing-3);
+      cursor: pointer;
+      transition: border-color 0.2s;
+      position: relative;
+    }
+
+    .issue-card:hover {
+      border-color: var(--color-text-secondary);
+    }
+
+    .issue-card.selected {
+      border-color: var(--color-status-needs-action);
+      box-shadow: 0 0 0 2px rgba(240, 136, 62, 0.3);
+    }
+
+    .issue-card.long-press-active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .repo-badge {
+      background: var(--color-bg-primary);
+      color: var(--color-text-secondary);
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      font-family: monospace;
+    }
+
+    .issue-number {
+      font-size: 11px;
+      font-weight: bold;
+      font-family: monospace;
+    }
+
+    .issue-title {
+      color: var(--color-text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      margin-bottom: var(--spacing-2);
+    }
+
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .phase-dots {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .phase-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-border);
+    }
+
+    .phase-dot.completed {
+      background: var(--color-status-needs-action);
+    }
+
+    .phase-connector {
+      width: 12px;
+      height: 2px;
+      background: var(--color-border);
+    }
+
+    .phase-connector.completed {
+      background: rgba(240, 136, 62, 0.5);
+    }
+
+    .time-ago {
+      font-size: 10px;
+      color: var(--color-text-secondary);
+      font-family: monospace;
+    }
+
+    /* Context Menu Styles */
+    .context-menu-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 100;
+    }
+
+    .context-menu {
+      position: absolute;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      min-width: 200px;
+      z-index: 101;
+      overflow: hidden;
+    }
+
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-3);
+      padding: var(--spacing-3) var(--spacing-4);
+      color: var(--color-text-primary);
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      transition: background-color 0.15s;
+    }
+
+    .context-menu-item:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    .context-menu-item.danger {
+      color: var(--color-danger);
+    }
+
+    .context-menu-item.danger:hover {
+      background: rgba(218, 54, 51, 0.1);
+    }
+
+    .context-menu-divider {
+      height: 1px;
+      background: var(--color-border);
+      margin: var(--spacing-1) 0;
+    }
+
+    .context-menu-icon {
+      font-size: 18px;
+      width: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Confirmation Dialog Styles */
+    .dialog-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: var(--spacing-4);
+    }
+
+    .dialog {
+      background: var(--color-bg-secondary);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-border);
+      width: 100%;
+      max-width: 360px;
+      overflow: hidden;
+    }
+
+    .dialog-header {
+      padding: var(--spacing-4);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .dialog-title {
+      color: var(--color-text-primary);
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .dialog-body {
+      padding: var(--spacing-4);
+    }
+
+    .dialog-text {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: var(--spacing-4);
+    }
+
+    .issue-preview {
+      background: var(--color-bg-tertiary);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-3);
+      border: 1px solid var(--color-border);
+    }
+
+    .issue-preview-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .issue-preview-title {
+      color: var(--color-text-primary);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .warning-box {
+      background: rgba(218, 54, 51, 0.1);
+      border: 1px solid rgba(218, 54, 51, 0.3);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-3);
+      margin-top: var(--spacing-3);
+      display: flex;
+      align-items: flex-start;
+      gap: var(--spacing-2);
+    }
+
+    .warning-box ion-icon {
+      color: var(--color-danger);
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .warning-text {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .dialog-actions {
+      padding: var(--spacing-4);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      gap: var(--spacing-3);
+    }
+
+    .btn {
+      flex: 1;
+      padding: var(--spacing-3);
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      min-height: 44px;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover {
+      opacity: 0.9;
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-primary {
+      background: var(--color-primary);
+      color: white;
+    }
+
+    .btn-danger {
+      background: var(--color-danger);
+      color: white;
+    }
+
+    /* Toast Styles */
+    .toast-container {
+      position: absolute;
+      bottom: 100px;
+      left: var(--spacing-4);
+      right: var(--spacing-4);
+      z-index: 300;
+    }
+
+    .toast {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-3) var(--spacing-4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    .toast-content {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .toast-icon {
+      font-size: 18px;
+    }
+
+    .toast-icon.success {
+      color: var(--color-status-running);
+    }
+
+    .toast-text {
+      color: var(--color-text-primary);
+      font-size: 14px;
+    }
+
+    .toast-undo {
+      color: #58A6FF;
+      font-size: 14px;
+      font-weight: 500;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: var(--spacing-2);
+    }
+
+    .toast-undo:hover {
+      text-decoration: underline;
+    }
+
+    /* Long press hint */
+    .long-press-hint {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-3) var(--spacing-4);
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .step-label {
+      background: var(--color-status-needs-action);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .mockup-section {
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+  <h1>Issue #12: Remove Issues from Board</h1>
+  <p style="color: #8B949E; text-align: center; margin-bottom: 20px;">Mobile Mockups (430px) - Long Press Interaction Flow</p>
+
+  <div class="mockup-container">
+    <!-- Screen 1: Default State -->
+    <div class="mockup-section">
+      <div class="step-label">1. Default State</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="column-header">
+              <div class="column-dot" style="background: var(--color-status-needs-action)"></div>
+              <span class="column-title">Needs Action</span>
+              <span class="column-count">3</span>
+            </div>
+            <div class="column-content">
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#12</span>
+                </div>
+                <div class="issue-title">Add the ability to remove issues from home screen</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">2h ago</span>
+                </div>
+              </div>
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">api-server</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#45</span>
+                </div>
+                <div class="issue-title">Fix authentication timeout issue</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">5h ago</span>
+                </div>
+              </div>
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#8</span>
+                </div>
+                <div class="issue-title">Outdated feature request</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">3d ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="long-press-hint">
+          <ion-icon name="finger-print-outline"></ion-icon>
+          Long-press any card for more options
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 2: Long Press Active -->
+    <div class="mockup-section">
+      <div class="step-label">2. Long Press (Haptic)</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="column-header">
+              <div class="column-dot" style="background: var(--color-status-needs-action)"></div>
+              <span class="column-title">Needs Action</span>
+              <span class="column-count">3</span>
+            </div>
+            <div class="column-content">
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#12</span>
+                </div>
+                <div class="issue-title">Add the ability to remove issues from home screen</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">2h ago</span>
+                </div>
+              </div>
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">api-server</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#45</span>
+                </div>
+                <div class="issue-title">Fix authentication timeout issue</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">5h ago</span>
+                </div>
+              </div>
+              <div class="issue-card long-press-active selected">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#8</span>
+                </div>
+                <div class="issue-title">Outdated feature request</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">3d ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 3: Context Menu -->
+    <div class="mockup-section">
+      <div class="step-label">3. Context Menu</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="context-menu-overlay"></div>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="column-header">
+              <div class="column-dot" style="background: var(--color-status-needs-action)"></div>
+              <span class="column-title">Needs Action</span>
+              <span class="column-count">3</span>
+            </div>
+            <div class="column-content">
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#12</span>
+                </div>
+                <div class="issue-title">Add the ability to remove issues from home screen</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">2h ago</span>
+                </div>
+              </div>
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">api-server</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#45</span>
+                </div>
+                <div class="issue-title">Fix authentication timeout issue</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">5h ago</span>
+                </div>
+              </div>
+              <div class="issue-card selected">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#8</span>
+                </div>
+                <div class="issue-title">Outdated feature request</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">3d ago</span>
+                </div>
+                <!-- Context Menu positioned below card -->
+                <div class="context-menu" style="top: calc(100% + 8px); left: 50%; transform: translateX(-50%);">
+                  <button class="context-menu-item">
+                    <span class="context-menu-icon"><ion-icon name="open-outline"></ion-icon></span>
+                    View Details
+                  </button>
+                  <button class="context-menu-item">
+                    <span class="context-menu-icon"><ion-icon name="logo-github"></ion-icon></span>
+                    Open in GitHub
+                  </button>
+                  <div class="context-menu-divider"></div>
+                  <button class="context-menu-item">
+                    <span class="context-menu-icon"><ion-icon name="eye-off-outline"></ion-icon></span>
+                    Remove from Board
+                  </button>
+                  <button class="context-menu-item danger">
+                    <span class="context-menu-icon"><ion-icon name="close-circle-outline"></ion-icon></span>
+                    Close Issue
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Confirmation Dialogs</h2>
+  <div class="mockup-container">
+    <!-- Screen 4: Remove Confirmation -->
+    <div class="mockup-section">
+      <div class="step-label">4a. Remove Confirmation</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="dialog-overlay">
+          <div class="dialog">
+            <div class="dialog-header">
+              <div class="dialog-title">
+                <ion-icon name="eye-off-outline" style="color: var(--color-text-secondary)"></ion-icon>
+                Remove from Board
+              </div>
+            </div>
+            <div class="dialog-body">
+              <p class="dialog-text">Hide this issue from your Kanban board? You can trigger a new job to restore it.</p>
+              <div class="issue-preview">
+                <div class="issue-preview-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#8</span>
+                </div>
+                <div class="issue-preview-title">Outdated feature request</div>
+              </div>
+            </div>
+            <div class="dialog-actions">
+              <button class="btn btn-secondary">Cancel</button>
+              <button class="btn btn-primary">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 4b: Close Issue Confirmation -->
+    <div class="mockup-section">
+      <div class="step-label">4b. Close Issue Confirmation</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="dialog-overlay">
+          <div class="dialog">
+            <div class="dialog-header">
+              <div class="dialog-title">
+                <ion-icon name="close-circle-outline" style="color: var(--color-danger)"></ion-icon>
+                Close Issue
+              </div>
+            </div>
+            <div class="dialog-body">
+              <p class="dialog-text">Close this issue on GitHub? The issue will be marked as closed and removed from your board.</p>
+              <div class="issue-preview">
+                <div class="issue-preview-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#8</span>
+                </div>
+                <div class="issue-preview-title">Outdated feature request</div>
+              </div>
+              <div class="warning-box">
+                <ion-icon name="warning-outline"></ion-icon>
+                <span class="warning-text">This action cannot be undone from the app. You can reopen the issue from GitHub.</span>
+              </div>
+            </div>
+            <div class="dialog-actions">
+              <button class="btn btn-secondary">Cancel</button>
+              <button class="btn btn-danger">Close Issue</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 5: Toast with Undo (Remove) -->
+    <div class="mockup-section">
+      <div class="step-label">5a. Toast (Remove - with Undo)</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="column-header">
+              <div class="column-dot" style="background: var(--color-status-needs-action)"></div>
+              <span class="column-title">Needs Action</span>
+              <span class="column-count">2</span>
+            </div>
+            <div class="column-content">
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#12</span>
+                </div>
+                <div class="issue-title">Add the ability to remove issues from home screen</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">2h ago</span>
+                </div>
+              </div>
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">api-server</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#45</span>
+                </div>
+                <div class="issue-title">Fix authentication timeout issue</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">5h ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="toast-container">
+          <div class="toast">
+            <div class="toast-content">
+              <ion-icon name="checkmark-circle" class="toast-icon success"></ion-icon>
+              <span class="toast-text">Issue hidden from board</span>
+            </div>
+            <button class="toast-undo">Undo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 5b: Toast (Close - no Undo) -->
+    <div class="mockup-section">
+      <div class="step-label">5b. Toast (Close - no Undo)</div>
+      <div class="phone-frame">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-bar-icons">
+            <ion-icon name="cellular"></ion-icon>
+            <ion-icon name="wifi"></ion-icon>
+            <ion-icon name="battery-full"></ion-icon>
+          </div>
+        </div>
+        <div class="app-header">
+          <span class="app-title">Ops Deck</span>
+          <div class="header-actions">
+            <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
+            <button class="icon-btn"><ion-icon name="settings-outline"></ion-icon></button>
+          </div>
+        </div>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="column-header">
+              <div class="column-dot" style="background: var(--color-status-needs-action)"></div>
+              <span class="column-title">Needs Action</span>
+              <span class="column-count">2</span>
+            </div>
+            <div class="column-content">
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">ops-deck</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#12</span>
+                </div>
+                <div class="issue-title">Add the ability to remove issues from home screen</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                    <div class="phase-connector"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">2h ago</span>
+                </div>
+              </div>
+              <div class="issue-card">
+                <div class="card-header">
+                  <span class="repo-badge">api-server</span>
+                  <span class="issue-number" style="color: var(--color-status-needs-action)">#45</span>
+                </div>
+                <div class="issue-title">Fix authentication timeout issue</div>
+                <div class="card-footer">
+                  <div class="phase-dots">
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot completed"></div>
+                    <div class="phase-connector completed"></div>
+                    <div class="phase-dot"></div>
+                  </div>
+                  <span class="time-ago">5h ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="toast-container">
+          <div class="toast">
+            <div class="toast-content">
+              <ion-icon name="checkmark-circle" class="toast-icon success"></ion-icon>
+              <span class="toast-text">Issue closed on GitHub</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
