@@ -328,7 +328,7 @@ class ApiService {
         'title': title,
         'body': body,
       },
-      timeout: const Duration(seconds: 15),
+      timeout: const Duration(seconds: 30), // GitHub CLI can be slow
       maxRetries: 0, // Don't retry create to avoid duplicates
     );
 
