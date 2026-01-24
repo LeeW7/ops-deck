@@ -1,27 +1,68 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/issue_model.dart';
 
+/// Callback for context menu trigger, provides issue and position
+typedef IssueContextMenuCallback = void Function(Issue issue, Offset position);
+
 /// Card representing an issue in the Kanban board
-class IssueCard extends StatelessWidget {
+class IssueCard extends StatefulWidget {
   final Issue issue;
   final VoidCallback? onTap;
+  final IssueContextMenuCallback? onContextMenu;
 
   const IssueCard({
     super.key,
     required this.issue,
     this.onTap,
+    this.onContextMenu,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final statusColor = Color(issue.status.colorValue);
+  State<IssueCard> createState() => _IssueCardState();
+}
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
+class _IssueCardState extends State<IssueCard> {
+  bool _isLongPressActive = false;
+  Offset? _longPressPosition;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = Color(widget.issue.status.colorValue);
+
+    return GestureDetector(
+      onLongPressStart: (details) {
+        setState(() {
+          _isLongPressActive = true;
+          _longPressPosition = details.globalPosition;
+        });
+        HapticFeedback.mediumImpact();
+      },
+      onLongPressEnd: (_) {
+        setState(() => _isLongPressActive = false);
+        if (_longPressPosition != null && widget.onContextMenu != null) {
+          widget.onContextMenu!(widget.issue, _longPressPosition!);
+        }
+      },
+      onLongPressCancel: () {
+        setState(() => _isLongPressActive = false);
+      },
+      onSecondaryTapUp: (details) {
+        // Right-click support for desktop
+        widget.onContextMenu?.call(widget.issue, details.globalPosition);
+      },
+      child: AnimatedScale(
+        scale: _isLongPressActive ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedOpacity(
+          opacity: _isLongPressActive ? 0.85 : 1.0,
+          duration: const Duration(milliseconds: 100),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: const Color(0xFF21262D),
@@ -31,28 +72,31 @@ class IssueCard extends StatelessWidget {
               width: 1,
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header row: repo + issue number
-              _buildHeader(context, statusColor),
-              const SizedBox(height: 8),
-              // Title
-              Text(
-                issue.title,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFFE6EDF3),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header row: repo + issue number
+                    _buildHeader(context, statusColor),
+                    const SizedBox(height: 8),
+                    // Title
+                    Text(
+                      widget.issue.title,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFFE6EDF3),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    // Footer: phase + time
+                    _buildFooter(context, statusColor),
+                  ],
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 8),
-              // Footer: phase + time
-              _buildFooter(context, statusColor),
-            ],
+            ),
           ),
         ),
       ),
@@ -70,7 +114,7 @@ class IssueCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(
-            issue.repoSlug,
+            widget.issue.repoSlug,
             style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 10,
@@ -81,7 +125,7 @@ class IssueCard extends StatelessWidget {
         const SizedBox(width: 8),
         // Issue number
         Text(
-          '#${issue.issueNum}',
+          '#${widget.issue.issueNum}',
           style: TextStyle(
             fontFamily: 'monospace',
             fontSize: 11,
@@ -97,8 +141,8 @@ class IssueCard extends StatelessWidget {
   }
 
   Widget _buildStatusIndicator(Color statusColor) {
-    final runningJob = issue.runningJob;
-    final failedJob = issue.failedJob;
+    final runningJob = widget.issue.runningJob;
+    final failedJob = widget.issue.failedJob;
 
     if (runningJob != null) {
       // Animated running indicator
@@ -145,7 +189,7 @@ class IssueCard extends StatelessWidget {
     }
 
     // Show phase for needs action
-    if (issue.status == IssueStatus.needsAction) {
+    if (widget.issue.status == IssueStatus.needsAction) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
@@ -153,7 +197,7 @@ class IssueCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
-          issue.currentPhase.displayName,
+          widget.issue.currentPhase.displayName,
           style: TextStyle(
             fontFamily: 'monospace',
             fontSize: 9,
@@ -165,7 +209,7 @@ class IssueCard extends StatelessWidget {
     }
 
     // Done state
-    if (issue.status == IssueStatus.done) {
+    if (widget.issue.status == IssueStatus.done) {
       return Icon(Icons.check_circle, size: 16, color: statusColor);
     }
 
@@ -180,7 +224,7 @@ class IssueCard extends StatelessWidget {
         const Spacer(),
         // Time ago
         Text(
-          _timeAgo(issue.lastActivityTime),
+          _timeAgo(widget.issue.lastActivityTime),
           style: const TextStyle(
             fontFamily: 'monospace',
             fontSize: 10,
@@ -203,7 +247,7 @@ class IssueCard extends StatelessWidget {
             height: 6,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: issue.completedPhases.contains(phases[i])
+              color: widget.issue.completedPhases.contains(phases[i])
                   ? statusColor
                   : const Color(0xFF30363D),
               border: Border.all(
@@ -216,7 +260,7 @@ class IssueCard extends StatelessWidget {
             Container(
               width: 12,
               height: 2,
-              color: issue.completedPhases.contains(phases[i])
+              color: widget.issue.completedPhases.contains(phases[i])
                   ? statusColor.withOpacity(0.5)
                   : const Color(0xFF30363D),
             ),
