@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/issue_model.dart';
 import '../providers/issue_board_provider.dart';
 import '../widgets/kanban/kanban_column.dart';
 import '../widgets/kanban/repo_filter_chips.dart';
 import '../widgets/kanban/done_column_header.dart';
+import '../widgets/kanban/issue_context_menu.dart';
+import '../widgets/dialogs/remove_confirmation_dialog.dart';
+import '../widgets/dialogs/close_issue_dialog.dart';
 import 'issue_detail_screen.dart';
 import 'issue_search_screen.dart';
 import 'create_issue_screen.dart';
@@ -257,6 +261,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                   status: status,
                   issues: provider.issuesForStatus(status),
                   onIssueTap: (issue) => _openIssueDetail(context, issue),
+                  onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
                 ),
               );
             },
@@ -290,6 +295,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                       status: _columnStatuses[i],
                       issues: provider.issuesForStatus(_columnStatuses[i]),
                       onIssueTap: (issue) => _openIssueDetail(context, issue),
+                      onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
                     ),
                   ),
                   if (i < _columnStatuses.length - 1) const SizedBox(width: 12),
@@ -367,6 +373,102 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => IssueSearchScreen(initialStatus: initialStatus),
+      ),
+    );
+  }
+
+  void _handleIssueContextMenu(BuildContext context, Issue issue, Offset position) {
+    showIssueContextMenu(
+      context: context,
+      issue: issue,
+      position: position,
+      onViewDetails: () => _openIssueDetail(context, issue),
+      onOpenInGitHub: () => _openIssueInGitHub(issue),
+      onRemoveFromBoard: () => _handleRemoveFromBoard(context, issue),
+      onCloseIssue: () => _handleCloseIssue(context, issue),
+    );
+  }
+
+  Future<void> _openIssueInGitHub(Issue issue) async {
+    final url = Uri.parse('https://github.com/${issue.repo}/issues/${issue.issueNum}');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _handleRemoveFromBoard(BuildContext context, Issue issue) async {
+    final confirmed = await RemoveConfirmationDialog.show(context, issue);
+    if (!confirmed) return;
+
+    if (!context.mounted) return;
+    final provider = context.read<IssueBoardProvider>();
+    await provider.hideIssue(issue);
+
+    if (!context.mounted) return;
+    _showHideToast(context, issue.title);
+  }
+
+  Future<void> _handleCloseIssue(BuildContext context, Issue issue) async {
+    final confirmed = await CloseIssueDialog.show(context, issue);
+    if (!confirmed) return;
+
+    if (!context.mounted) return;
+    final provider = context.read<IssueBoardProvider>();
+
+    try {
+      await provider.closeIssue(issue);
+      if (!context.mounted) return;
+      _showCloseToast(context, issue.title);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to close issue: $e'),
+          backgroundColor: const Color(0xFFDA3633),
+        ),
+      );
+    }
+  }
+
+  void _showHideToast(BuildContext context, String issueTitle) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Color(0xFF3FB950), size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text('Issue hidden from board')),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'Undo',
+          textColor: const Color(0xFF58A6FF),
+          onPressed: () {
+            context.read<IssueBoardProvider>().undoHideIssue();
+          },
+        ),
+        duration: const Duration(seconds: 3),
+        backgroundColor: const Color(0xFF161B22),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showCloseToast(BuildContext context, String issueTitle) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Color(0xFF3FB950), size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text('Issue closed on GitHub')),
+          ],
+        ),
+        duration: Duration(seconds: 3),
+        backgroundColor: Color(0xFF161B22),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }

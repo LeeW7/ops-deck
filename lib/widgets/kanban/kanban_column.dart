@@ -7,6 +7,7 @@ class KanbanColumn extends StatelessWidget {
   final IssueStatus status;
   final List<Issue> issues;
   final void Function(Issue)? onIssueTap;
+  final IssueContextMenuCallback? onIssueContextMenu;
   final bool collapsed;
   final VoidCallback? onCollapsedTap;
 
@@ -15,6 +16,7 @@ class KanbanColumn extends StatelessWidget {
     required this.status,
     required this.issues,
     this.onIssueTap,
+    this.onIssueContextMenu,
     this.collapsed = false,
     this.onCollapsedTap,
   });
@@ -177,6 +179,7 @@ class KanbanColumn extends StatelessWidget {
           child: IssueCard(
             issue: issue,
             onTap: onIssueTap != null ? () => onIssueTap!(issue) : null,
+            onContextMenu: onIssueContextMenu,
           ),
         );
       },
