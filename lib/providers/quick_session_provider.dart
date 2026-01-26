@@ -117,7 +117,8 @@ class QuickSessionProvider with ChangeNotifier {
         maxPerRepo: 10,
       );
       if (deleted > 0 && kDebugMode) {
-        print('[QuickSessionProvider] Cleaned up $deleted old sessions');
+        final remaining = await _cacheService.getSessionCount();
+        print('[QuickSessionProvider] Cleaned up $deleted old sessions ($remaining remaining)');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -299,18 +300,21 @@ class QuickSessionProvider with ChangeNotifier {
         _wsService!.send(content);
         // WebSocket will handle the response via streaming
       } else {
-        // Fallback to HTTP API
-        final response = await _apiService.sendSessionMessage(
+        // Fallback to HTTP API when WebSocket disconnected.
+        // NOTE: The HTTP API triggers Claude execution server-side but the
+        // assistant response streams via WebSocket. Without an active WebSocket
+        // connection, we won't receive the response in real-time. The message
+        // will be saved server-side and can be retrieved when reconnecting.
+        await _apiService.sendSessionMessage(
           _currentSession!.id,
           content,
         );
 
-        // Add assistant response
-        _messages.add(response);
-        await _cacheService.saveMessage(response);
-
+        // Since WebSocket is disconnected, we can't receive the streaming response.
+        // The user message is saved; assistant response will appear on reconnect.
         _isStreaming = false;
         _streamingContent = '';
+        _error = 'Message sent but response unavailable - WebSocket disconnected. Reconnect to see response.';
         notifyListeners();
       }
 
