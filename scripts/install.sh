@@ -1,19 +1,16 @@
 #!/bin/bash
-# Deploy Ops Deck to Android device via wireless debugging
-# Usage: ./scripts/deploy.sh [IP:PORT]
+# Build and install Ops Deck APK to Android device
+# Usage: ./scripts/install.sh [IP:PORT]
 #
-# First time setup:
-#   1. On phone: Settings → Developer options → Wireless debugging → Enable
-#   2. Tap "Wireless debugging" to see IP:PORT
-#   3. Run: ./scripts/deploy.sh 192.168.1.100:5555
-#
-# After pairing once, just run: ./scripts/deploy.sh
+# This installs a standalone APK that persists after disconnecting.
+# Use deploy.sh instead if you want hot reload during development.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$PROJECT_DIR/.wireless-debug-device"
+APK_PATH="$PROJECT_DIR/build/app/outputs/flutter-apk/app-release.apk"
 
 cd "$PROJECT_DIR"
 
@@ -66,38 +63,40 @@ else
         echo "  - Wireless debugging is enabled on your phone"
         echo "  - Phone and computer are on the same network"
         echo "  - The IP:PORT is correct"
-        echo ""
-        echo "If this is a new device, you may need to pair first:"
-        echo "  adb pair <IP>:<PAIRING_PORT> <PAIRING_CODE>"
         exit 1
     fi
 fi
 
-# Verify device is available to Flutter
-log_info "Verifying Flutter can see device..."
-
-# Use the device address directly since we already connected via adb
-DEVICE_ID="$DEVICE_ADDR"
-
-if [ -z "$DEVICE_ID" ]; then
-    log_error "Device not found by Flutter. Try running 'flutter doctor' for diagnostics."
-    exit 1
-fi
-
-log_success "Device ready: $DEVICE_ID"
-
-# Build and deploy
-echo ""
-log_info "Building and deploying to device..."
-echo ""
-
-# Check if we're on a feature branch that needs merging first
+# Check if we're on a feature branch
 CURRENT_BRANCH=$(git branch --show-current)
 if [ "$CURRENT_BRANCH" != "main" ]; then
     log_warn "On branch '$CURRENT_BRANCH' (not main)"
 fi
 
-# Run flutter with the device
-flutter run -d "$DEVICE_ID" --release
+# Build release APK
+echo ""
+log_info "Building release APK..."
+flutter build apk --release
 
-log_success "Deployment complete!"
+if [ ! -f "$APK_PATH" ]; then
+    log_error "APK not found at $APK_PATH"
+    exit 1
+fi
+
+log_success "APK built successfully"
+
+# Get APK size
+APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+log_info "APK size: $APK_SIZE"
+
+# Install APK
+echo ""
+log_info "Installing APK to device..."
+adb -s "$DEVICE_ADDR" install -r "$APK_PATH"
+
+log_success "Installation complete!"
+echo ""
+echo -e "${GREEN}The app is now installed on your device.${NC}"
+echo -e "You can disconnect wireless debugging - the app will persist."
+echo ""
+echo "To launch: Open 'Ops Deck' from your app drawer"

@@ -13,6 +13,7 @@ import 'issue_detail_screen.dart';
 import 'issue_search_screen.dart';
 import 'create_issue_screen.dart';
 import 'settings_screen.dart';
+import 'quick_tasks_screen.dart';
 
 /// Main Kanban board screen displaying issues grouped by status
 class KanbanBoardScreen extends StatefulWidget {
@@ -88,6 +89,17 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     return AppBar(
       title: const Text('claude-ops'),
       actions: [
+        // Quick Tasks button
+        IconButton(
+          icon: const Icon(Icons.chat_bubble_outline),
+          tooltip: 'Quick Tasks',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const QuickTasksScreen()),
+            );
+          },
+        ),
         // Search button
         IconButton(
           icon: const Icon(Icons.search),
