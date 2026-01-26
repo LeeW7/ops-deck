@@ -1,6 +1,8 @@
-# Local notes (not committed)
+# Local notes and scripts (not committed)
 *.local.md
 .claude/local/
+.claude/state/
+scripts/local/
 
 # Miscellaneous
 *.class
