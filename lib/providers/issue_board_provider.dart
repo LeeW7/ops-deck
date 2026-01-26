@@ -6,6 +6,9 @@ import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../services/job_cache_service.dart';
 
+/// Callback type for showing toast notifications
+typedef ToastCallback = void Function(String message, {VoidCallback? onUndo});
+
 /// Provider for the issue-centric Kanban board
 /// Uses WebSocket for real-time updates, SQLite cache for instant startup
 class IssueBoardProvider with ChangeNotifier {
@@ -24,6 +27,11 @@ class IssueBoardProvider with ChangeNotifier {
   StreamSubscription? _eventsSubscription;
   StreamSubscription? _connectionSubscription;
 
+  // Hidden issues support
+  Set<String> _hiddenIssueKeys = {};
+  Issue? _recentlyHiddenIssue;
+  Timer? _undoTimer;
+
   // Getters
   Map<String, Issue> get issues => _issues;
   Set<String> get selectedRepos => _selectedRepos;
@@ -40,11 +48,20 @@ class IssueBoardProvider with ChangeNotifier {
     return issueList;
   }
 
-  /// Get issues filtered by selected repos
+  /// Get issues filtered by selected repos AND excluding hidden issues
   List<Issue> get filteredIssues {
-    if (_selectedRepos.isEmpty) return allIssues;
-    return allIssues.where((issue) => _selectedRepos.contains(issue.repo)).toList();
+    var issues = allIssues;
+    // Filter out hidden issues
+    issues = issues.where((issue) => !_hiddenIssueKeys.contains(issue.key)).toList();
+    // Filter by selected repos
+    if (_selectedRepos.isNotEmpty) {
+      issues = issues.where((issue) => _selectedRepos.contains(issue.repo)).toList();
+    }
+    return issues;
   }
+
+  /// Check if there's a recent hide that can be undone
+  bool get canUndoHide => _recentlyHiddenIssue != null;
 
   /// Get issues for a specific Kanban column
   List<Issue> issuesForStatus(IssueStatus status) {
@@ -79,6 +96,8 @@ class IssueBoardProvider with ChangeNotifier {
 
     // Load cached data first for instant UI
     await _loadFromCache();
+    // Load hidden issues
+    await _loadHiddenIssues();
 
     if (_isConfigured) {
       await fetchRepos();
@@ -89,6 +108,20 @@ class IssueBoardProvider with ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  /// Load hidden issues from cache on initialization
+  Future<void> _loadHiddenIssues() async {
+    try {
+      _hiddenIssueKeys = await _cache.getHiddenIssueKeys();
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Loaded ${_hiddenIssueKeys.length} hidden issues');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Failed to load hidden issues: $e');
+      }
+    }
   }
 
   /// Load jobs from local cache for instant startup
@@ -170,6 +203,15 @@ class IssueBoardProvider with ChangeNotifier {
 
   /// Update issue state from a job event
   void _updateIssueFromEvent(String issueKey, JobEventData jobData) {
+    // Auto-restore hidden issues when new activity appears
+    if (_hiddenIssueKeys.contains(issueKey)) {
+      _hiddenIssueKeys.remove(issueKey);
+      _cache.unhideIssue(issueKey);
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Auto-restored hidden issue: $issueKey');
+      }
+    }
+
     // Get existing issue or create placeholder
     var issue = _issues[issueKey];
     final now = DateTime.now();
@@ -550,9 +592,69 @@ class IssueBoardProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // ============================================================================
+  // Hidden Issues Methods
+  // ============================================================================
+
+  /// Hide an issue from the board (local only)
+  Future<void> hideIssue(Issue issue) async {
+    _recentlyHiddenIssue = issue;
+    _hiddenIssueKeys.add(issue.key);
+
+    await _cache.hideIssue(
+      issueKey: issue.key,
+      repo: issue.repo,
+      issueNum: issue.issueNum,
+      issueTitle: issue.title,
+      reason: 'user',
+    );
+
+    notifyListeners();
+
+    // Start undo timer (3 seconds)
+    _undoTimer?.cancel();
+    _undoTimer = Timer(const Duration(seconds: 3), () {
+      _recentlyHiddenIssue = null;
+      notifyListeners(); // Update UI when undo window expires
+    });
+  }
+
+  /// Undo hiding the most recently hidden issue
+  Future<bool> undoHideIssue() async {
+    if (_recentlyHiddenIssue == null) return false;
+
+    final issue = _recentlyHiddenIssue!;
+    _hiddenIssueKeys.remove(issue.key);
+    await _cache.unhideIssue(issue.key);
+
+    _recentlyHiddenIssue = null;
+    _undoTimer?.cancel();
+
+    notifyListeners();
+    return true;
+  }
+
+  /// Close an issue on GitHub and hide from board
+  Future<void> closeIssue(Issue issue) async {
+    await _apiService.closeIssue(issue.repo, issue.issueNum);
+
+    // Hide locally after successful close
+    _hiddenIssueKeys.add(issue.key);
+    await _cache.hideIssue(
+      issueKey: issue.key,
+      repo: issue.repo,
+      issueNum: issue.issueNum,
+      issueTitle: issue.title,
+      reason: 'closed',
+    );
+
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     stopRealTimeUpdates();
+    _undoTimer?.cancel();
     _globalEvents.dispose();
     _cache.close();
     super.dispose();
