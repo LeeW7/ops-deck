@@ -68,6 +68,87 @@ Extract from the CONTEXT block:
 3. Determine scope and complexity
 4. Identify all screens/flows that need mockups
 
+### Step 2.5: Detect Cross-Repo Dependencies
+
+**First, check for related repos configuration:**
+```bash
+# Read related server repo from project config
+SERVER_REPO=$(cat .claude/.setup-workflow.yaml 2>/dev/null | grep -A3 "related_repos:" | grep "repo:" | head -1 | awk '{print $2}')
+if [ -z "$SERVER_REPO" ]; then
+  echo "No related server repo configured - skipping cross-repo check"
+fi
+```
+
+If `SERVER_REPO` is set, analyze if the feature requires **server changes**.
+
+**Indicators that server changes are needed:**
+- New API endpoint mentioned or implied (e.g., "close issue", "merge PR", "get stats")
+- New data that must come from server (not already in existing endpoints)
+- GitHub API operations (close issue, create PR, add labels, etc.)
+- WebSocket event changes or new event types
+- Authentication/authorization changes
+
+**If server changes ARE needed AND `SERVER_REPO` is configured:**
+
+1. **Create linked issue in the server repo**:
+   ```bash
+   # Get current repo name for reference
+   CLIENT_REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+
+   SERVER_ISSUE_URL=$(gh issue create --repo "$SERVER_REPO" \
+     --title "API: [Brief description] (for ${CLIENT_REPO}#[ISSUE_NUMBER])" \
+     --body "$(cat <<SERVEREOF
+   ## Context
+   Server-side support for ${CLIENT_REPO}#[ISSUE_NUMBER]
+
+   **Client Issue**: https://github.com/${CLIENT_REPO}/issues/[ISSUE_NUMBER]
+
+   ## Required Endpoints
+
+   ### `[METHOD] /path/to/endpoint`
+   **Purpose**: [What this endpoint does]
+
+   **Request**:
+   ```json
+   {
+     "field": "value"
+   }
+   ```
+
+   **Response (200)**:
+   ```json
+   {
+     "success": true
+   }
+   ```
+
+   **Error Responses**:
+   - `404` - Resource not found
+   - `403` - Insufficient permissions
+
+   ## Implementation Notes
+   - [Technical consideration 1]
+   - [Technical consideration 2]
+
+   ## Acceptance Criteria
+   - [ ] Endpoint returns expected response
+   - [ ] Error cases handled appropriately
+   - [ ] Integrates with existing auth flow
+
+   ---
+   *Auto-generated from ${CLIENT_REPO} planning workflow*
+SERVEREOF
+   )" --label "client-dependency" 2>&1)
+
+   # Extract issue number from URL
+   SERVER_ISSUE_NUM=$(echo "$SERVER_ISSUE_URL" | grep -oE '[0-9]+$')
+   echo "Created ${SERVER_REPO}#$SERVER_ISSUE_NUM"
+   ```
+
+2. **Store the server issue reference** for inclusion in the client plan.
+
+**If NO server changes needed OR no SERVER_REPO configured:** Set `SERVER_REPO=""` and `SERVER_ISSUE_NUM=""` and continue to Step 3.
+
 ### Step 3: Define Acceptance Criteria
 Create testable criteria in Given/When/Then format:
 ```
@@ -145,6 +226,14 @@ As a [user type], I want to [goal] so that [benefit]
 - **New Files**: [files to create]
 - **Modified Files**: [files to update]
 
+## Server Dependencies
+<!-- If no server changes needed, write "None - client-only feature" -->
+<!-- If SERVER_REPO is set, use: ${SERVER_REPO}#${SERVER_ISSUE_NUM} -->
+- **Server issue**: [SERVER_REPO]#[SERVER_ISSUE_NUM] *(or "None - client-only feature")*
+- **Required endpoints**:
+  - `[METHOD] /endpoint/path` - [brief description]
+- **Blocking**: Yes/No *(must server work complete first?)*
+
 ## Architecture
 See: `docs/mockups/issue-[ISSUE_NUMBER]/ARCHITECTURE.md`
 
@@ -182,6 +271,16 @@ I have updated the issue description with the proposed implementation plan.
 ### Key Decisions
 - [Decision 1]
 - [Decision 2]
+
+### Server Dependencies
+<!-- Include this section ONLY if SERVER_REPO is configured and server changes are needed -->
+This feature requires server-side changes in the server repo.
+- **Server Issue**: [SERVER_REPO]#[SERVER_ISSUE_NUM]
+- **Endpoints**: `[METHOD] /path` - [description]
+- **Implementation Order**: Server first, then client
+
+<!-- If no server changes needed or no SERVER_REPO configured, use: -->
+<!-- No server changes required - client-only feature. -->
 
 ### Mockup Preview
 https://issue-[N]-mockup.surge.sh
@@ -294,11 +393,13 @@ Then **EXIT with failure** - this is a blocked state, not a success.
 ## Checklist Before Exit
 
 - [ ] Read `.claude/patterns.md`
+- [ ] Analyzed for cross-repo dependencies (claude-ops)
+- [ ] If server changes needed: Created linked issue in claude-ops
 - [ ] Created `docs/mockups/issue-[N]/` directory
 - [ ] Created `index.html` (mobile mockup)
 - [ ] Created `web.html` (desktop mockup)
 - [ ] Created `ARCHITECTURE.md`
 - [ ] Deployed mockups to Surge (`npx surge`)
-- [ ] Updated issue body with `gh issue edit`
+- [ ] Updated issue body with `gh issue edit` (including Server Dependencies section)
 - [ ] Posted notification comment with `gh issue comment`
 - [ ] **EXIT**

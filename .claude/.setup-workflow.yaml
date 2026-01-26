@@ -4,6 +4,10 @@ issue_tracker: github
 integration_method: cli
 github_org: LeeW7
 headless_commands: true
+related_repos:
+  - name: claude-ops
+    repo: LeeW7/claude-ops
+    relationship: server
 claude_md_hash: sha256:bf6ac9a7b4d53d30094494dcaef65d1f64680e675feb3726d80737004cae20bf
 file_hashes:
     agents/agent-factory.md: sha256:ddd2d077868adb38da687aebefa171b62ce6ad387c1b465603d46bb112637c22
