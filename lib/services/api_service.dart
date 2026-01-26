@@ -445,10 +445,8 @@ class ApiService {
 
   /// Close an issue on GitHub
   Future<void> closeIssue(String repo, int issueNum, {String reason = 'completed'}) async {
-    // Encode the repo path (owner/repo) for URL
-    final encodedRepo = Uri.encodeComponent(repo);
     final response = await _postWithRetry(
-      '/issues/$encodedRepo/$issueNum/close',
+      '/issues/$repo/$issueNum/close',
       body: {'reason': reason},
       maxRetries: 0, // Don't retry destructive operations
     );

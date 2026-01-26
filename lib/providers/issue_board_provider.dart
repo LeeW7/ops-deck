@@ -615,6 +615,7 @@ class IssueBoardProvider with ChangeNotifier {
     _undoTimer?.cancel();
     _undoTimer = Timer(const Duration(seconds: 3), () {
       _recentlyHiddenIssue = null;
+      notifyListeners(); // Update UI when undo window expires
     });
   }
 

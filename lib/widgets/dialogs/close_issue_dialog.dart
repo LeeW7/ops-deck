@@ -126,12 +126,16 @@ class CloseIssueDialog extends StatelessWidget {
   }
 
   Widget _buildWarningBox() {
+    // Pre-computed colors to avoid deprecated withOpacity
+    const warningBgColor = Color(0x1ADA3633); // 0xFFDA3633 at 10% opacity
+    const warningBorderColor = Color(0x4DDA3633); // 0xFFDA3633 at 30% opacity
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFDA3633).withOpacity(0.1),
+        color: warningBgColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFDA3633).withOpacity(0.3)),
+        border: Border.all(color: warningBorderColor),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
