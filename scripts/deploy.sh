@@ -75,12 +75,9 @@ fi
 
 # Verify device is available to Flutter
 log_info "Verifying Flutter can see device..."
-DEVICE_ID=$(flutter devices 2>/dev/null | grep -i "android\|pixel\|samsung\|oneplus" | head -1 | awk '{print $NF}' | tr -d '()')
 
-if [ -z "$DEVICE_ID" ]; then
-    # Try to get device ID from adb
-    DEVICE_ID=$(adb devices | grep "$DEVICE_ADDR" | awk '{print $1}')
-fi
+# Use the device address directly since we already connected via adb
+DEVICE_ID="$DEVICE_ADDR"
 
 if [ -z "$DEVICE_ID" ]; then
     log_error "Device not found by Flutter. Try running 'flutter doctor' for diagnostics."

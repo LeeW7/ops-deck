@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_model.dart';
+import '../models/message_model.dart';
+import '../models/session_model.dart';
 
 /// Types of API errors for better error handling
 enum ApiErrorType {
@@ -103,6 +105,45 @@ class ApiService {
               headers: {'Content-Type': 'application/json'},
               body: body != null ? json.encode(body) : null,
             )
+            .timeout(timeout);
+        return response;
+      } on TimeoutException {
+        if (attempts > maxRetries) {
+          throw ApiException.timeout();
+        }
+        await Future.delayed(_retryDelay * attempts);
+      } on SocketException catch (e) {
+        if (attempts > maxRetries) {
+          throw ApiException.network(e);
+        }
+        await Future.delayed(_retryDelay * attempts);
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        if (attempts > maxRetries) {
+          throw ApiException.network(e);
+        }
+        await Future.delayed(_retryDelay * attempts);
+      }
+    }
+  }
+
+  /// Make a DELETE request with retry logic for transient failures
+  Future<http.Response> _deleteWithRetry(
+    String endpoint, {
+    Duration timeout = const Duration(seconds: 30),
+    int maxRetries = _maxRetries,
+  }) async {
+    final baseUrl = await getBaseUrl();
+    if (baseUrl == null || baseUrl.isEmpty) {
+      throw ApiException.notConfigured();
+    }
+
+    int attempts = 0;
+    while (true) {
+      attempts++;
+      try {
+        final response = await http
+            .delete(Uri.parse('$baseUrl$endpoint'))
             .timeout(timeout);
         return response;
       } on TimeoutException {
@@ -491,6 +532,87 @@ class ApiService {
       return;
     } else {
       throw _handleErrorResponse(response, 'close issue');
+    }
+  }
+
+  // ============================================================
+  // Quick Session API Methods
+  // ============================================================
+
+  /// Create a new quick session for a repository
+  Future<QuickSession> createSession(String repo) async {
+    // No retry for create to avoid duplicate sessions
+    final response = await _postWithRetry(
+      '/sessions/start',
+      body: {'repo': repo},
+      timeout: const Duration(seconds: 30),
+      maxRetries: 0,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = _parseJson(response) as Map<String, dynamic>;
+      return QuickSession.fromJson(data);
+    } else {
+      throw _handleErrorResponse(response, 'create session');
+    }
+  }
+
+  /// Send a message to a quick session
+  Future<QuickMessage> sendSessionMessage(String sessionId, String content) async {
+    // No retry to avoid duplicate messages
+    final response = await _postWithRetry(
+      '/sessions/$sessionId/message',
+      body: {'content': content},
+      timeout: const Duration(seconds: 60), // Longer timeout for AI responses
+      maxRetries: 0,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = _parseJson(response) as Map<String, dynamic>;
+      return QuickMessage.fromJson(data);
+    } else {
+      throw _handleErrorResponse(response, 'send session message');
+    }
+  }
+
+  /// Get all quick sessions
+  Future<List<QuickSession>> getSessions() async {
+    final response = await _getWithRetry('/sessions');
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = _parseJson(response) as List<dynamic>;
+      return data
+          .map((json) => QuickSession.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } else {
+      throw _handleErrorResponse(response, 'fetch sessions');
+    }
+  }
+
+  /// Get a specific quick session with messages
+  Future<QuickSession> getSession(String sessionId) async {
+    final response = await _getWithRetry('/sessions/$sessionId');
+
+    if (response.statusCode == 200) {
+      final data = _parseJson(response) as Map<String, dynamic>;
+      return QuickSession.fromJson(data);
+    } else {
+      throw _handleErrorResponse(response, 'fetch session');
+    }
+  }
+
+  /// Delete a quick session
+  Future<void> deleteSession(String sessionId) async {
+    // No retry for destructive operations
+    final response = await _deleteWithRetry(
+      '/sessions/$sessionId',
+      maxRetries: 0,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      return;
+    } else {
+      throw _handleErrorResponse(response, 'delete session');
     }
   }
 }
