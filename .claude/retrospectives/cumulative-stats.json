@@ -1,9 +1,40 @@
 {
-  "totalIssuesCompleted": 0,
-  "totalLinesWritten": 0,
+  "lastUpdated": "2026-01-26",
+  "totalIssuesCompleted": 1,
+  "totalLinesWritten": 3795,
   "totalTestsGenerated": 0,
   "totalPatternsGraduated": 0,
-  "averageIssueComplexity": 0,
+  "averageIssueComplexity": 7,
   "specialistsCreated": [],
-  "lastUpdated": null
+  "totals": {
+    "filesChanged": 12,
+    "filesAdded": 6,
+    "linesAdded": 3795,
+    "linesRemoved": 43,
+    "testFilesAdded": 0,
+    "testCasesAdded": 0,
+    "estimatedHoursSaved": 100
+  },
+  "quarterlyBreakdown": {
+    "2026-q1": {
+      "features": 1,
+      "linesAdded": 3795,
+      "hoursSaved": 100
+    }
+  },
+  "features": [
+    {
+      "issueNumber": 12,
+      "prNumber": 13,
+      "title": "Add the ability to remove issues from the home screen",
+      "completedAt": "2026-01-26",
+      "complexity": 7,
+      "linesAdded": 3795,
+      "linesRemoved": 43,
+      "filesChanged": 12,
+      "estimatedManualHours": 106,
+      "actualHours": 6,
+      "hoursSaved": 100
+    }
+  ]
 }
