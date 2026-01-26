@@ -1,3 +1,7 @@
+# Local notes (not committed)
+*.local.md
+.claude/local/
+
 # Miscellaneous
 *.class
 *.lock
