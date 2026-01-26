@@ -2,18 +2,13 @@
 # Deploy Ops Deck to Android device via wireless debugging
 # Usage: ./scripts/deploy.sh [IP:PORT]
 #
-# First time setup:
-#   1. On phone: Settings → Developer options → Wireless debugging → Enable
-#   2. Tap "Wireless debugging" to see IP:PORT
-#   3. Run: ./scripts/deploy.sh 192.168.1.100:5555
-#
-# After pairing once, just run: ./scripts/deploy.sh
+# The script will auto-discover wireless debugging devices.
+# If multiple devices are found, specify one manually.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="$PROJECT_DIR/.wireless-debug-device"
 
 cd "$PROJECT_DIR"
 
@@ -29,75 +24,91 @@ log_success() { echo -e "${GREEN}✓${NC} $1"; }
 log_warn() { echo -e "${YELLOW}⚠${NC} $1"; }
 log_error() { echo -e "${RED}✗${NC} $1"; }
 
-# Get device address from argument or saved config
+# Function to discover wireless devices via mDNS
+discover_device() {
+    # Check if mDNS is available
+    if ! adb mdns check &>/dev/null; then
+        return 1
+    fi
+
+    # Get list of discovered devices
+    local services
+    services=$(adb mdns services 2>/dev/null | grep "_adb-tls-connect._tcp" | head -1)
+
+    if [ -z "$services" ]; then
+        return 1
+    fi
+
+    # Extract IP:PORT from the service line
+    # Format: adb-SERIAL-ID    _adb-tls-connect._tcp    192.168.x.x:PORT
+    echo "$services" | awk '{print $NF}'
+}
+
+# Function to find already-connected wireless device
+find_connected_device() {
+    adb devices 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+" | head -1 | awk '{print $1}'
+}
+
+# Try to get device address
 DEVICE_ADDR="$1"
 
-if [ -z "$DEVICE_ADDR" ] && [ -f "$CONFIG_FILE" ]; then
-    DEVICE_ADDR=$(cat "$CONFIG_FILE")
-    log_info "Using saved device: $DEVICE_ADDR"
+if [ -z "$DEVICE_ADDR" ]; then
+    # First check if already connected
+    log_info "Checking for connected devices..."
+    DEVICE_ADDR=$(find_connected_device)
+
+    if [ -n "$DEVICE_ADDR" ]; then
+        log_success "Found connected device: $DEVICE_ADDR"
+    else
+        # Try auto-discovery
+        log_info "Discovering wireless debugging devices..."
+        DEVICE_ADDR=$(discover_device)
+
+        if [ -n "$DEVICE_ADDR" ]; then
+            log_success "Discovered device: $DEVICE_ADDR"
+        fi
+    fi
 fi
 
 if [ -z "$DEVICE_ADDR" ]; then
-    log_error "No device address provided."
+    log_error "No device found."
     echo ""
-    echo "Usage: $0 <IP:PORT>"
+    echo "Make sure wireless debugging is enabled on your phone:"
+    echo "  Settings → Developer options → Wireless debugging → Enable"
     echo ""
-    echo "To find your device address:"
-    echo "  1. On phone: Settings → Developer options → Wireless debugging"
-    echo "  2. Tap 'Wireless debugging' to see IP address & Port"
-    echo ""
-    echo "Example: $0 192.168.1.100:5555"
+    echo "Or specify manually: $0 <IP:PORT>"
     exit 1
 fi
 
-# Save device address for future use
-echo "$DEVICE_ADDR" > "$CONFIG_FILE"
-
-# Check if already connected
-log_info "Checking device connection..."
-if adb devices | grep -q "$DEVICE_ADDR"; then
-    log_success "Already connected to $DEVICE_ADDR"
-else
+# Connect if not already connected
+if ! adb devices | grep -q "$DEVICE_ADDR.*device$"; then
     log_info "Connecting to $DEVICE_ADDR..."
     if adb connect "$DEVICE_ADDR" 2>&1 | grep -q "connected"; then
         log_success "Connected to $DEVICE_ADDR"
     else
-        log_error "Failed to connect. Make sure:"
-        echo "  - Wireless debugging is enabled on your phone"
-        echo "  - Phone and computer are on the same network"
-        echo "  - The IP:PORT is correct"
+        log_error "Failed to connect. The device may need to be paired first."
         echo ""
-        echo "If this is a new device, you may need to pair first:"
-        echo "  adb pair <IP>:<PAIRING_PORT> <PAIRING_CODE>"
+        echo "To pair a new device:"
+        echo "  1. On phone: Wireless debugging → Pair device with pairing code"
+        echo "  2. Run: adb pair <IP>:<PAIRING_PORT> <CODE>"
+        echo "  3. Then run this script again"
         exit 1
     fi
+else
+    log_success "Already connected to $DEVICE_ADDR"
 fi
 
-# Verify device is available to Flutter
-log_info "Verifying Flutter can see device..."
-
-# Use the device address directly since we already connected via adb
-DEVICE_ID="$DEVICE_ADDR"
-
-if [ -z "$DEVICE_ID" ]; then
-    log_error "Device not found by Flutter. Try running 'flutter doctor' for diagnostics."
-    exit 1
-fi
-
-log_success "Device ready: $DEVICE_ID"
-
-# Build and deploy
-echo ""
-log_info "Building and deploying to device..."
-echo ""
-
-# Check if we're on a feature branch that needs merging first
+# Check if we're on a feature branch
 CURRENT_BRANCH=$(git branch --show-current)
 if [ "$CURRENT_BRANCH" != "main" ]; then
     log_warn "On branch '$CURRENT_BRANCH' (not main)"
 fi
 
-# Run flutter with the device
-flutter run -d "$DEVICE_ID" --release
+# Build and run
+echo ""
+log_info "Building and deploying to device..."
+echo ""
+
+flutter run -d "$DEVICE_ADDR" --release
 
 log_success "Deployment complete!"
