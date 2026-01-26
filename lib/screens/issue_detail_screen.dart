@@ -326,10 +326,12 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       }
     } catch (e) {
       if (mounted) {
+        final message = e is ApiException ? e.userMessage : e.toString();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(message),
             backgroundColor: const Color(0xFFDA3633),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -457,10 +459,12 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       }
     } catch (e) {
       if (mounted) {
+        final message = e is ApiException ? e.userMessage : e.toString();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(message),
             backgroundColor: const Color(0xFFDA3633),
+            duration: const Duration(seconds: 5),
           ),
         );
       }

@@ -14,6 +14,7 @@ enum ApiErrorType {
   conflict,      // 409 conflict (e.g., job already running)
   unauthorized,  // 401/403 auth errors
   badRequest,    // 400 bad request
+  validation,    // 422 validation error (missing labels, invalid data, etc.)
   invalidJson,   // Failed to parse response
   notConfigured, // Server URL not set
   unknown,       // Other errors
@@ -134,14 +135,49 @@ class ApiService {
   }
 
   /// Handle error response from server
+  ///
+  /// Extracts error details from various common response formats and adds
+  /// operation context to help users understand what went wrong.
   ApiException _handleErrorResponse(http.Response response, [String? context]) {
+    String? serverMessage;
+
     try {
       final data = json.decode(response.body);
-      final serverMessage = data['reason'] ?? data['error']?.toString();
-      return ApiException.fromStatusCode(response.statusCode, serverMessage);
+
+      // Check common error message fields in order of specificity
+      serverMessage = data['reason'] as String? ??
+          data['error'] as String? ??
+          data['message'] as String? ??
+          data['detail'] as String? ??
+          data['error_description'] as String? ??
+          (data['details'] is String ? data['details'] as String : null) ??
+          (data['errors'] is List && (data['errors'] as List).isNotEmpty
+              ? (data['errors'] as List).map((e) => e.toString()).join('; ')
+              : null);
+
+      // If error is a nested object, try to extract its message
+      if (serverMessage == null && data['error'] is Map) {
+        final errorObj = data['error'] as Map;
+        serverMessage = errorObj['message'] as String? ??
+            errorObj['reason'] as String? ??
+            errorObj['detail'] as String?;
+      }
     } catch (_) {
-      return ApiException.fromStatusCode(response.statusCode);
+      // JSON parsing failed - use raw body if it's short enough to be useful
+      if (response.body.isNotEmpty && response.body.length < 200) {
+        serverMessage = response.body;
+      }
     }
+
+    // Add operation context if available
+    final contextPrefix = context != null ? 'Failed to $context: ' : '';
+    final finalMessage = serverMessage != null
+        ? '$contextPrefix$serverMessage'
+        : (context != null
+            ? 'Failed to $context (HTTP ${response.statusCode})'
+            : null);
+
+    return ApiException.fromStatusCode(response.statusCode, finalMessage);
   }
 
   Future<Map<String, Job>> fetchStatus() async {
@@ -515,6 +551,8 @@ class ApiException implements Exception {
         return ApiErrorType.notFound;
       case 409:
         return ApiErrorType.conflict;
+      case 422:
+        return ApiErrorType.validation;
       default:
         return ApiErrorType.unknown;
     }
@@ -525,13 +563,15 @@ class ApiException implements Exception {
       case ApiErrorType.serverError:
         return 'Server error ($statusCode). Please try again later.';
       case ApiErrorType.notFound:
-        return 'Resource not found';
+        return 'Resource not found. The item may have been deleted or moved.';
       case ApiErrorType.conflict:
-        return 'Operation conflict - resource may already exist';
+        return 'Operation conflict - resource may already exist or be in use';
       case ApiErrorType.unauthorized:
-        return 'Authentication required';
+        return 'Authentication required. Check your credentials or permissions.';
       case ApiErrorType.badRequest:
-        return 'Invalid request';
+        return 'Invalid request. Check your input and try again.';
+      case ApiErrorType.validation:
+        return 'Validation failed. Check that required fields and configurations are set up correctly.';
       default:
         return 'Request failed ($statusCode)';
     }
