@@ -459,6 +459,12 @@ class IssueBoardProvider with ChangeNotifier {
       if (oldIssue.status != entry.value.status) return true;
       if (oldIssue.currentPhase != entry.value.currentPhase) return true;
       if (oldIssue.jobs.length != entry.value.jobs.length) return true;
+      // Check if any job has new decisions
+      for (int i = 0; i < oldIssue.jobs.length && i < entry.value.jobs.length; i++) {
+        if (oldIssue.jobs[i].decisions.length != entry.value.jobs[i].decisions.length) {
+          return true;
+        }
+      }
     }
     return false;
   }
@@ -601,6 +607,24 @@ class IssueBoardProvider with ChangeNotifier {
 
   /// Get a specific issue
   Issue? getIssue(String key) => _issues[key];
+
+  /// Get a specific job by ID
+  Job? getJob(String jobId) {
+    for (final issue in _issues.values) {
+      for (final job in issue.jobs) {
+        if (job.issueId == jobId) {
+          return job;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Get decisions for a specific job
+  List<JobDecision> getJobDecisions(String jobId) {
+    final job = getJob(jobId);
+    return job?.decisions ?? [];
+  }
 
   /// Proceed with issue (trigger next phase) - legacy method
   Future<bool> proceedWithIssue(String repo, int issueNum) async {
