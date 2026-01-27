@@ -106,23 +106,26 @@ class _IssueCardState extends State<IssueCard> {
   Widget _buildHeader(BuildContext context, Color statusColor) {
     return Row(
       children: [
-        // Repo name
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: const Color(0xFF30363D),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            widget.issue.repoSlug,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 10,
-              color: Color(0xFF8B949E),
+        // Repo name (flexible to handle long names)
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF30363D),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              widget.issue.repoSlug,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: Color(0xFF8B949E),
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         // Issue number
         Text(
           '#${widget.issue.issueNum}',

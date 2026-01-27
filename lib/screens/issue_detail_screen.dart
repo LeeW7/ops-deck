@@ -1135,7 +1135,9 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
   /// Build decisions section for the Details tab
   Widget _buildDecisionsSection() {
     final provider = context.watch<IssueBoardProvider>();
-    final issueKey = '${widget.repo}#${widget.issueNum}';
+    // Provider uses repoSlug-issueNum format (e.g., "ops-deck-20")
+    final repoSlug = widget.repo.split('/').last;
+    final issueKey = '$repoSlug-${widget.issueNum}';
     final issue = provider.getIssue(issueKey);
 
     if (issue == null) return const SizedBox.shrink();
