@@ -615,6 +615,106 @@ class ApiService {
       throw _handleErrorResponse(response, 'delete session');
     }
   }
+
+  // ============================================================
+  // Hidden Issues API Methods (server-synced)
+  // ============================================================
+
+  /// Fetch all hidden issues from the server
+  Future<List<HiddenIssueData>> fetchHiddenIssues() async {
+    final response = await _getWithRetry('/api/hidden-issues');
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = _parseJson(response) as List<dynamic>;
+      return data
+          .map((json) => HiddenIssueData.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } else if (response.statusCode == 404) {
+      // Endpoint not implemented yet - return empty list
+      return [];
+    } else {
+      throw _handleErrorResponse(response, 'fetch hidden issues');
+    }
+  }
+
+  /// Add a hidden issue to the server
+  Future<void> addHiddenIssue({
+    required String issueKey,
+    required String repo,
+    required int issueNum,
+    required String issueTitle,
+    String reason = 'user',
+  }) async {
+    final response = await _postWithRetry(
+      '/api/hidden-issues',
+      body: {
+        'issue_key': issueKey,
+        'repo': repo,
+        'issue_num': issueNum,
+        'issue_title': issueTitle,
+        'reason': reason,
+      },
+      maxRetries: 1,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return;
+    } else if (response.statusCode == 404) {
+      // Endpoint not implemented yet - silently ignore
+      return;
+    } else {
+      throw _handleErrorResponse(response, 'hide issue');
+    }
+  }
+
+  /// Remove a hidden issue from the server
+  Future<void> removeHiddenIssue(String issueKey) async {
+    final response = await _deleteWithRetry(
+      '/api/hidden-issues/${Uri.encodeComponent(issueKey)}',
+      maxRetries: 1,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      return;
+    } else if (response.statusCode == 404) {
+      // Already removed or endpoint not implemented - that's fine
+      return;
+    } else {
+      throw _handleErrorResponse(response, 'unhide issue');
+    }
+  }
+}
+
+/// Data model for hidden issue from server
+class HiddenIssueData {
+  final String issueKey;
+  final String repo;
+  final int issueNum;
+  final String issueTitle;
+  final DateTime hiddenAt;
+  final String reason;
+
+  HiddenIssueData({
+    required this.issueKey,
+    required this.repo,
+    required this.issueNum,
+    required this.issueTitle,
+    required this.hiddenAt,
+    required this.reason,
+  });
+
+  factory HiddenIssueData.fromJson(Map<String, dynamic> json) {
+    return HiddenIssueData(
+      issueKey: json['issue_key'] as String,
+      repo: json['repo'] as String,
+      issueNum: json['issue_num'] as int,
+      issueTitle: json['issue_title'] as String? ?? '',
+      hiddenAt: json['hidden_at'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(json['hidden_at'] as int)
+          : DateTime.now(),
+      reason: json['reason'] as String? ?? 'user',
+    );
+  }
 }
 
 /// Typed API exception with error categorization

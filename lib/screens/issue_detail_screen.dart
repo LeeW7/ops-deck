@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/file_diff_model.dart';
+import '../providers/issue_board_provider.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
+import '../widgets/diff/diff_summary_card.dart';
+import 'diff_review_screen.dart';
 import 'feedback_screen.dart';
 
 class IssueDetailScreen extends StatefulWidget {
@@ -151,6 +156,24 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
           }
         });
 
+        // Capture Edit/Write tool events for diff preview
+        if (message.type == 'toolUse') {
+          final toolData = message.data;
+          if (toolData is ToolData) {
+            final editDetails = toolData.tool.editDetails;
+            if (editDetails != null && _activeJobId != null) {
+              final diff = FileDiff(
+                filePath: editDetails.filePath,
+                oldContent: editDetails.oldContent,
+                newContent: editDetails.newContent,
+                isNewFile: editDetails.isWrite,
+                timestamp: DateTime.now(),
+              );
+              context.read<IssueBoardProvider>().addFileDiff(_activeJobId!, diff);
+            }
+          }
+        }
+
         // When job completes, refresh everything
         if (message.type == 'result') {
           _refreshWorkflowState();
@@ -163,6 +186,10 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
           if (status == 'completed' || status == 'failed' || status == 'blocked') {
             // Refresh issue details from GitHub to show updated comments/plan
             _refreshIssueDetails();
+            // Clear diffs when job is no longer active
+            if (_activeJobId != null) {
+              context.read<IssueBoardProvider>().clearDiffs(_activeJobId!);
+            }
           }
         }
       }
@@ -379,6 +406,39 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       // Feedback was submitted and revision job kicked off, go to home
       Navigator.popUntil(context, (route) => route.isFirst);
     }
+  }
+
+  /// Build the review changes section if there are pending diffs
+  Widget _buildReviewChangesSection() {
+    final provider = context.watch<IssueBoardProvider>();
+    final diffSummary = _activeJobId != null ? provider.getDiffSummary(_activeJobId!) : null;
+
+    if (diffSummary == null || diffSummary.diffs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ReviewChangesBanner(
+        fileCount: diffSummary.fileCount,
+        linesAdded: diffSummary.totalLinesAdded,
+        linesRemoved: diffSummary.totalLinesRemoved,
+        onReview: () => _navigateToDiffReview(diffSummary),
+      ),
+    );
+  }
+
+  /// Navigate to the diff review screen
+  void _navigateToDiffReview(JobDiffSummary summary) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MobileDiffReviewScreen(
+          summary: summary,
+          issueTitle: _displayTitle,
+        ),
+      ),
+    );
   }
 
   Future<void> _showMergeConfirmation() async {
@@ -849,14 +909,19 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
                   ),
                 ),
                 const Spacer(),
+                // Diff count indicator
+                if (_activeJobId != null) _buildDiffIndicator(),
                 if (_activeJobId != null)
-                  Text(
-                    _activeJobId!.split('-').last.replaceAll('-headless', '').toUpperCase(),
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 10,
-                      color: Color(0xFF58A6FF),
-                      fontWeight: FontWeight.bold,
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text(
+                      _activeJobId!.split('-').last.replaceAll('-headless', '').toUpperCase(),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        color: Color(0xFF58A6FF),
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
               ],
@@ -998,6 +1063,48 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       case WsConnectionState.disconnected:
         return isActivePhase ? 'Disconnected' : 'No active job';
     }
+  }
+
+  Widget _buildDiffIndicator() {
+    final provider = context.watch<IssueBoardProvider>();
+    final diffSummary = _activeJobId != null ? provider.getDiffSummary(_activeJobId!) : null;
+
+    if (diffSummary == null || diffSummary.diffs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return InkWell(
+      onTap: () => _navigateToDiffReview(diffSummary),
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F6FEB).withOpacity(0.2),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: const Color(0xFF1F6FEB).withOpacity(0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.difference,
+              size: 12,
+              color: Color(0xFF58A6FF),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '${diffSummary.fileCount}',
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF58A6FF),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildEmptyLiveState(bool isActivePhase) {
@@ -1708,6 +1815,9 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
             // Workflow progress indicator with revision count
             _buildWorkflowProgress(completedPhases, currentPhase, revisionCount),
             const SizedBox(height: 12),
+
+            // Review Changes button if there are pending diffs
+            if (_activeJobId != null) _buildReviewChangesSection(),
 
             // PR link if available (for review phase)
             if (prUrl != null && currentPhase == 'review') ...[

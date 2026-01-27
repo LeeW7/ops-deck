@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/issue_model.dart';
 import '../models/job_model.dart';
+import '../models/file_diff_model.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../services/job_cache_service.dart';
@@ -31,6 +32,9 @@ class IssueBoardProvider with ChangeNotifier {
   Set<String> _hiddenIssueKeys = {};
   Issue? _recentlyHiddenIssue;
   Timer? _undoTimer;
+
+  // Diff tracking for pending changes
+  final Map<String, JobDiffSummary> _jobDiffs = {};
 
   // Getters
   Map<String, Issue> get issues => _issues;
@@ -62,6 +66,25 @@ class IssueBoardProvider with ChangeNotifier {
 
   /// Check if there's a recent hide that can be undone
   bool get canUndoHide => _recentlyHiddenIssue != null;
+
+  /// Get diff summary for a job
+  JobDiffSummary? getDiffSummary(String jobId) => _jobDiffs[jobId];
+
+  /// Check if a job has pending diffs
+  bool hasDiffs(String jobId) => _jobDiffs.containsKey(jobId) && (_jobDiffs[jobId]?.diffs.isNotEmpty ?? false);
+
+  /// Add a file diff for a job
+  void addFileDiff(String jobId, FileDiff diff) {
+    final existing = _jobDiffs[jobId] ?? JobDiffSummary.empty(jobId);
+    _jobDiffs[jobId] = existing.withDiff(diff);
+    notifyListeners();
+  }
+
+  /// Clear diffs for a job (when job completes or is rejected)
+  void clearDiffs(String jobId) {
+    _jobDiffs.remove(jobId);
+    notifyListeners();
+  }
 
   /// Get issues for a specific Kanban column
   List<Issue> issuesForStatus(IssueStatus status) {
@@ -113,13 +136,62 @@ class IssueBoardProvider with ChangeNotifier {
   /// Load hidden issues from cache on initialization
   Future<void> _loadHiddenIssues() async {
     try {
+      // First load from local cache for instant display
       _hiddenIssueKeys = await _cache.getHiddenIssueKeys();
       if (kDebugMode) {
-        print('[IssueBoardProvider] Loaded ${_hiddenIssueKeys.length} hidden issues');
+        print('[IssueBoardProvider] Loaded ${_hiddenIssueKeys.length} hidden issues from cache');
       }
+
+      // Then sync from server (will update cache)
+      await _syncHiddenIssuesFromServer();
     } catch (e) {
       if (kDebugMode) {
         print('[IssueBoardProvider] Failed to load hidden issues: $e');
+      }
+    }
+  }
+
+  /// Sync hidden issues from the server and update local cache
+  Future<void> _syncHiddenIssuesFromServer() async {
+    try {
+      final serverHidden = await _apiService.fetchHiddenIssues();
+      final serverKeys = serverHidden.map((h) => h.issueKey).toSet();
+
+      // Update local state with server data
+      _hiddenIssueKeys = serverKeys;
+
+      // Update local cache to match server
+      final localKeys = await _cache.getHiddenIssueKeys();
+
+      // Add any new ones from server to local cache
+      for (final hidden in serverHidden) {
+        if (!localKeys.contains(hidden.issueKey)) {
+          await _cache.hideIssue(
+            issueKey: hidden.issueKey,
+            repo: hidden.repo,
+            issueNum: hidden.issueNum,
+            issueTitle: hidden.issueTitle,
+            reason: hidden.reason,
+          );
+        }
+      }
+
+      // Remove any local ones not on server
+      for (final localKey in localKeys) {
+        if (!serverKeys.contains(localKey)) {
+          await _cache.unhideIssue(localKey);
+        }
+      }
+
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Synced ${serverKeys.length} hidden issues from server');
+      }
+
+      notifyListeners();
+    } catch (e) {
+      // Server sync failed - keep using local cache
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Server sync failed, using local cache: $e');
       }
     }
   }
@@ -207,6 +279,14 @@ class IssueBoardProvider with ChangeNotifier {
     if (_hiddenIssueKeys.contains(issueKey)) {
       _hiddenIssueKeys.remove(issueKey);
       _cache.unhideIssue(issueKey);
+
+      // Sync removal to server
+      _apiService.removeHiddenIssue(issueKey).catchError((e) {
+        if (kDebugMode) {
+          print('[IssueBoardProvider] Failed to sync auto-restore to server: $e');
+        }
+      });
+
       if (kDebugMode) {
         print('[IssueBoardProvider] Auto-restored hidden issue: $issueKey');
       }
@@ -596,11 +676,12 @@ class IssueBoardProvider with ChangeNotifier {
   // Hidden Issues Methods
   // ============================================================================
 
-  /// Hide an issue from the board (local only)
+  /// Hide an issue from the board (synced to server)
   Future<void> hideIssue(Issue issue) async {
     _recentlyHiddenIssue = issue;
     _hiddenIssueKeys.add(issue.key);
 
+    // Update local cache
     await _cache.hideIssue(
       issueKey: issue.key,
       repo: issue.repo,
@@ -608,6 +689,19 @@ class IssueBoardProvider with ChangeNotifier {
       issueTitle: issue.title,
       reason: 'user',
     );
+
+    // Sync to server (fire and forget - don't block UI)
+    _apiService.addHiddenIssue(
+      issueKey: issue.key,
+      repo: issue.repo,
+      issueNum: issue.issueNum,
+      issueTitle: issue.title,
+      reason: 'user',
+    ).catchError((e) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Failed to sync hidden issue to server: $e');
+      }
+    });
 
     notifyListeners();
 
@@ -626,6 +720,13 @@ class IssueBoardProvider with ChangeNotifier {
     final issue = _recentlyHiddenIssue!;
     _hiddenIssueKeys.remove(issue.key);
     await _cache.unhideIssue(issue.key);
+
+    // Sync removal to server (fire and forget)
+    _apiService.removeHiddenIssue(issue.key).catchError((e) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Failed to sync unhide to server: $e');
+      }
+    });
 
     _recentlyHiddenIssue = null;
     _undoTimer?.cancel();
@@ -647,6 +748,19 @@ class IssueBoardProvider with ChangeNotifier {
       issueTitle: issue.title,
       reason: 'closed',
     );
+
+    // Sync to server (fire and forget)
+    _apiService.addHiddenIssue(
+      issueKey: issue.key,
+      repo: issue.repo,
+      issueNum: issue.issueNum,
+      issueTitle: issue.title,
+      reason: 'closed',
+    ).catchError((e) {
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Failed to sync closed issue to server: $e');
+      }
+    });
 
     notifyListeners();
   }
