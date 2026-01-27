@@ -307,10 +307,31 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Done column header
-          DoneColumnHeader(
-            count: provider.doneIssues.length,
-            onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
+          // Header row with Done column header and refresh button
+          Row(
+            children: [
+              Expanded(
+                child: DoneColumnHeader(
+                  count: provider.doneIssues.length,
+                  onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
+                ),
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                icon: provider.isLoading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      )
+                    : const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+                onPressed: provider.isLoading ? null : _handleRefresh,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           // Main columns in a row
