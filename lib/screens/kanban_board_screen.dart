@@ -53,6 +53,10 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     });
   }
 
+  Future<void> _handleRefresh() async {
+    await context.read<IssueBoardProvider>().fetchJobs();
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
@@ -249,39 +253,52 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   }
 
   Widget _buildMobileBoard(BuildContext context, IssueBoardProvider provider) {
-    return Column(
-      children: [
-        // Done column header (collapsed, links to search)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: DoneColumnHeader(
-            count: provider.doneIssues.length,
-            onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
-          ),
-        ),
-        // Swipeable columns
-        Expanded(
-          child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: (page) => setState(() => _currentPage = page),
-            itemCount: _columnStatuses.length,
-            itemBuilder: (context, index) {
-              final status = _columnStatuses[index];
-              return Padding(
-                padding: const EdgeInsets.only(right: 12, bottom: 16, left: 4),
-                child: KanbanColumn(
-                  status: status,
-                  issues: provider.issuesForStatus(status),
-                  onIssueTap: (issue) => _openIssueDetail(context, issue),
-                  onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: Theme.of(context).colorScheme.primary,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height -
+              kToolbarHeight -
+              MediaQuery.of(context).padding.top -
+              56, // AppBar bottom (filter chips)
+          child: Column(
+            children: [
+              // Done column header (collapsed, links to search)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: DoneColumnHeader(
+                  count: provider.doneIssues.length,
+                  onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
                 ),
-              );
-            },
+              ),
+              // Swipeable columns
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (page) => setState(() => _currentPage = page),
+                  itemCount: _columnStatuses.length,
+                  itemBuilder: (context, index) {
+                    final status = _columnStatuses[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12, bottom: 16, left: 4),
+                      child: KanbanColumn(
+                        status: status,
+                        issues: provider.issuesForStatus(status),
+                        onIssueTap: (issue) => _openIssueDetail(context, issue),
+                        onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Page indicator
+              _buildPageIndicator(),
+            ],
           ),
         ),
-        // Page indicator
-        _buildPageIndicator(),
-      ],
+      ),
     );
   }
 
