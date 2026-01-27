@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1440, initial-scale=1.0">
+  <title>Pull to Refresh - Desktop View</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #0D1117;
+      color: #E6EDF3;
+      min-height: 100vh;
+      width: 1440px;
+      margin: 0 auto;
+    }
+
+    /* App Bar */
+    .app-bar {
+      background-color: #161B22;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #30363D;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .app-title {
+      font-size: 24px;
+      font-weight: 600;
+      font-family: monospace;
+    }
+
+    .app-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      color: #8B949E;
+      cursor: pointer;
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .icon-btn:hover {
+      background: #21262D;
+      color: #E6EDF3;
+    }
+
+    /* Repo Filter Chips */
+    .filter-chips {
+      padding: 12px 24px;
+      display: flex;
+      gap: 12px;
+      background: #161B22;
+      border-bottom: 1px solid #30363D;
+    }
+
+    .chip {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      background: #21262D;
+      color: #8B949E;
+      border: 1px solid #30363D;
+      cursor: pointer;
+    }
+
+    .chip:hover {
+      background: #30363D;
+    }
+
+    .chip.active {
+      background: #1F6FEB20;
+      color: #58A6FF;
+      border-color: #1F6FEB;
+    }
+
+    /* Main Content */
+    .main-content {
+      padding: 24px;
+    }
+
+    /* Refresh Indicator - Desktop Style */
+    .refresh-indicator {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      background: #21262D;
+      border-radius: 8px;
+      border: 1px solid #30363D;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #30363D;
+      border-top-color: #58A6FF;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .refresh-text {
+      font-size: 14px;
+      color: #8B949E;
+    }
+
+    /* Done Column Header */
+    .done-header {
+      padding: 16px;
+      background: #161B22;
+      border-radius: 12px;
+      border: 1px solid #30363D;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .done-label {
+      font-size: 16px;
+      color: #8B949E;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .done-icon {
+      color: #3FB950;
+    }
+
+    .done-count {
+      background: #3FB95020;
+      color: #3FB950;
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* Kanban Board */
+    .kanban-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .kanban-column {
+      background: #161B22;
+      border-radius: 12px;
+      border: 1px solid #30363D;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .column-header {
+      padding: 20px;
+      border-bottom: 1px solid #30363D;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .column-title {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .status-dot.needs-action { background: #F0883E; }
+    .status-dot.running { background: #1F6FEB; }
+    .status-dot.failed { background: #DA3633; }
+
+    .count-badge {
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .count-badge.needs-action {
+      background: #F0883E20;
+      color: #F0883E;
+    }
+
+    .count-badge.running {
+      background: #1F6FEB20;
+      color: #1F6FEB;
+    }
+
+    .count-badge.failed {
+      background: #DA363320;
+      color: #DA3633;
+    }
+
+    .column-content {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    /* Issue Card */
+    .issue-card {
+      padding: 20px;
+      border-bottom: 1px solid #30363D;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .issue-card:hover {
+      background: #21262D;
+    }
+
+    .issue-card:last-child {
+      border-bottom: none;
+    }
+
+    .issue-title {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 10px;
+      color: #E6EDF3;
+    }
+
+    .issue-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+      color: #8B949E;
+    }
+
+    .issue-repo {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .issue-number {
+      color: #58A6FF;
+    }
+
+    .issue-phase {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .phase-badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      background: #1F6FEB20;
+      color: #58A6FF;
+    }
+
+    /* Empty State */
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      color: #8B949E;
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    /* FAB */
+    .fab {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      background: #238636;
+      border: none;
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .fab:hover {
+      background: #2EA043;
+      transform: scale(1.05);
+    }
+
+    /* Demo States Container */
+    .demo-states {
+      margin: 24px;
+      padding: 20px;
+      background: #21262D;
+      border-radius: 12px;
+      border: 1px solid #30363D;
+    }
+
+    .demo-title {
+      font-size: 14px;
+      color: #8B949E;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .demo-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    .demo-btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      border: 1px solid #30363D;
+      background: #161B22;
+      color: #E6EDF3;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .demo-btn:hover {
+      background: #30363D;
+    }
+
+    .demo-btn.active {
+      background: #1F6FEB20;
+      border-color: #1F6FEB;
+      color: #58A6FF;
+    }
+
+    /* Desktop Note */
+    .desktop-note {
+      margin: 24px;
+      padding: 16px;
+      background: #1F6FEB20;
+      border: 1px solid #1F6FEB40;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #58A6FF;
+    }
+
+    .desktop-note strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Demo Controls -->
+  <div class="demo-states">
+    <div class="demo-title">Interactive Demo - Click to See Refresh States</div>
+    <div class="demo-buttons">
+      <button class="demo-btn active" onclick="showState('normal')">Normal View</button>
+      <button class="demo-btn" onclick="showState('refreshing')">Refreshing State</button>
+    </div>
+  </div>
+
+  <!-- Desktop Note -->
+  <div class="desktop-note">
+    <strong>Desktop Implementation Note</strong>
+    On desktop, the RefreshIndicator wraps the entire board. While pull-to-refresh is primarily a mobile gesture,
+    desktop users can trigger it with mouse scrolling at the top edge, or use a manual refresh button in the app bar.
+  </div>
+
+  <!-- App Bar -->
+  <div class="app-bar">
+    <div class="app-title">claude-ops</div>
+    <div class="app-actions">
+      <button class="icon-btn" id="refreshBtn" onclick="manualRefresh()">
+        <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+        </svg>
+      </button>
+      <button class="icon-btn">
+        <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+        </svg>
+      </button>
+      <button class="icon-btn">
+        <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+      </button>
+      <button class="icon-btn">
+        <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Repo Filter Chips -->
+  <div class="filter-chips">
+    <div class="chip active">ops-deck</div>
+    <div class="chip">claude-ops</div>
+    <div class="chip">workflow-templates</div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Refresh Indicator (shown during refresh) -->
+    <div class="refresh-indicator" id="refreshIndicator" style="display: none;">
+      <div class="spinner"></div>
+      <span class="refresh-text">Refreshing issues...</span>
+    </div>
+
+    <!-- Done Column Header -->
+    <div class="done-header">
+      <span class="done-label">
+        <svg class="done-icon" width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+        Done Issues
+      </span>
+      <span class="done-count">12 completed</span>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="kanban-board">
+      <!-- Needs Action Column -->
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title">
+            <span class="status-dot needs-action"></span>
+            Needs Action
+          </div>
+          <span class="count-badge needs-action">3</span>
+        </div>
+        <div class="column-content">
+          <div class="issue-card">
+            <div class="issue-title">Add pull down to refresh on home page</div>
+            <div class="issue-meta">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-number">#22</span>
+              <span class="issue-phase">
+                <span class="phase-badge">Plan</span>
+              </span>
+            </div>
+          </div>
+          <div class="issue-card">
+            <div class="issue-title">Implement dark mode toggle</div>
+            <div class="issue-meta">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-number">#18</span>
+              <span class="issue-phase">
+                <span class="phase-badge">Review</span>
+              </span>
+            </div>
+          </div>
+          <div class="issue-card">
+            <div class="issue-title">Add error boundary for job cards</div>
+            <div class="issue-meta">
+              <span class="issue-repo">claude-ops</span>
+              <span class="issue-number">#45</span>
+              <span class="issue-phase">
+                <span class="phase-badge">Implement</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Running Column -->
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title">
+            <span class="status-dot running"></span>
+            Running
+          </div>
+          <span class="count-badge running">2</span>
+        </div>
+        <div class="column-content">
+          <div class="issue-card">
+            <div class="issue-title">Add WebSocket reconnection logic</div>
+            <div class="issue-meta">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-number">#19</span>
+              <span class="issue-phase">
+                <span class="phase-badge">Implement</span>
+              </span>
+            </div>
+          </div>
+          <div class="issue-card">
+            <div class="issue-title">Refactor job aggregation logic</div>
+            <div class="issue-meta">
+              <span class="issue-repo">claude-ops</span>
+              <span class="issue-number">#42</span>
+              <span class="issue-phase">
+                <span class="phase-badge">Plan</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Failed Column -->
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title">
+            <span class="status-dot failed"></span>
+            Failed
+          </div>
+          <span class="count-badge failed">1</span>
+        </div>
+        <div class="column-content">
+          <div class="issue-card">
+            <div class="issue-title">Fix memory leak in log streaming</div>
+            <div class="issue-meta">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-number">#15</span>
+              <span class="issue-phase">
+                <span class="phase-badge">Implement</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAB -->
+  <button class="fab">+</button>
+
+  <script>
+    function showState(state) {
+      // Update button states
+      document.querySelectorAll('.demo-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      const refreshIndicator = document.getElementById('refreshIndicator');
+
+      switch(state) {
+        case 'normal':
+          refreshIndicator.style.display = 'none';
+          break;
+        case 'refreshing':
+          refreshIndicator.style.display = 'flex';
+          break;
+      }
+    }
+
+    function manualRefresh() {
+      const refreshIndicator = document.getElementById('refreshIndicator');
+      refreshIndicator.style.display = 'flex';
+
+      // Simulate refresh completing after 2 seconds
+      setTimeout(() => {
+        refreshIndicator.style.display = 'none';
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

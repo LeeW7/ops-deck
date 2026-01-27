@@ -249,73 +249,97 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   }
 
   Widget _buildMobileBoard(BuildContext context, IssueBoardProvider provider) {
-    return Column(
-      children: [
-        // Done column header (collapsed, links to search)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: DoneColumnHeader(
-            count: provider.doneIssues.length,
-            onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
-          ),
-        ),
-        // Swipeable columns
-        Expanded(
-          child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: (page) => setState(() => _currentPage = page),
-            itemCount: _columnStatuses.length,
-            itemBuilder: (context, index) {
-              final status = _columnStatuses[index];
-              return Padding(
-                padding: const EdgeInsets.only(right: 12, bottom: 16, left: 4),
-                child: KanbanColumn(
-                  status: status,
-                  issues: provider.issuesForStatus(status),
-                  onIssueTap: (issue) => _openIssueDetail(context, issue),
-                  onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchJobs(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height -
+              kToolbarHeight -
+              MediaQuery.of(context).padding.top -
+              56, // AppBar bottom height
+          child: Column(
+            children: [
+              // Done column header (collapsed, links to search)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: DoneColumnHeader(
+                  count: provider.doneIssues.length,
+                  onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
                 ),
-              );
-            },
+              ),
+              // Swipeable columns
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (page) => setState(() => _currentPage = page),
+                  itemCount: _columnStatuses.length,
+                  itemBuilder: (context, index) {
+                    final status = _columnStatuses[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12, bottom: 16, left: 4),
+                      child: KanbanColumn(
+                        status: status,
+                        issues: provider.issuesForStatus(status),
+                        onIssueTap: (issue) => _openIssueDetail(context, issue),
+                        onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Page indicator
+              _buildPageIndicator(),
+            ],
           ),
         ),
-        // Page indicator
-        _buildPageIndicator(),
-      ],
+      ),
     );
   }
 
   Widget _buildDesktopBoard(BuildContext context, IssueBoardProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Done column header
-          DoneColumnHeader(
-            count: provider.doneIssues.length,
-            onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
-          ),
-          const SizedBox(height: 16),
-          // Main columns in a row
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchJobs(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height -
+              kToolbarHeight -
+              MediaQuery.of(context).padding.top -
+              56, // AppBar bottom height
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
               children: [
-                for (int i = 0; i < _columnStatuses.length; i++) ...[
-                  Expanded(
-                    child: KanbanColumn(
-                      status: _columnStatuses[i],
-                      issues: provider.issuesForStatus(_columnStatuses[i]),
-                      onIssueTap: (issue) => _openIssueDetail(context, issue),
-                      onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
-                    ),
+                // Done column header
+                DoneColumnHeader(
+                  count: provider.doneIssues.length,
+                  onTap: () => _openSearch(context, initialStatus: IssueStatus.done),
+                ),
+                const SizedBox(height: 16),
+                // Main columns in a row
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (int i = 0; i < _columnStatuses.length; i++) ...[
+                        Expanded(
+                          child: KanbanColumn(
+                            status: _columnStatuses[i],
+                            issues: provider.issuesForStatus(_columnStatuses[i]),
+                            onIssueTap: (issue) => _openIssueDetail(context, issue),
+                            onIssueContextMenu: (issue, position) => _handleIssueContextMenu(context, issue, position),
+                          ),
+                        ),
+                        if (i < _columnStatuses.length - 1) const SizedBox(width: 12),
+                      ],
+                    ],
                   ),
-                  if (i < _columnStatuses.length - 1) const SizedBox(width: 12),
-                ],
+                ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
