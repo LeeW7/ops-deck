@@ -2,6 +2,65 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum JobStatus { running, failed, pending, completed, waitingApproval, rejected, interrupted, approvedResume, blocked, unknown }
 
+/// A decision made by Claude during job execution
+class JobDecision {
+  final String id;
+  final String action;
+  final String reasoning;
+  final List<String>? alternatives;
+  final String? category;
+  final DateTime timestamp;
+
+  JobDecision({
+    required this.id,
+    required this.action,
+    required this.reasoning,
+    this.alternatives,
+    this.category,
+    required this.timestamp,
+  });
+
+  factory JobDecision.fromJson(Map<String, dynamic> json) {
+    return JobDecision(
+      id: json['id'] as String? ?? '',
+      action: json['action'] as String? ?? '',
+      reasoning: json['reasoning'] as String? ?? '',
+      alternatives: (json['alternatives'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      category: json['category'] as String?,
+      timestamp: _parseTimestamp(json['timestamp']),
+    );
+  }
+
+  static DateTime _parseTimestamp(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return DateTime.now();
+  }
+
+  /// Get an icon name based on category
+  String get categoryIcon {
+    switch (category?.toLowerCase()) {
+      case 'architecture':
+        return 'architecture';
+      case 'library':
+        return 'library';
+      case 'pattern':
+        return 'pattern';
+      case 'storage':
+        return 'storage';
+      case 'api':
+        return 'api';
+      case 'testing':
+        return 'testing';
+      default:
+        return 'other';
+    }
+  }
+}
+
 class JobCost {
   final double totalUsd;
   final int inputTokens;
@@ -57,6 +116,7 @@ class Job {
   final JobCost? cost;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final List<JobDecision> decisions;
 
   Job({
     required this.issueId,
@@ -75,6 +135,7 @@ class Job {
     this.cost,
     required this.createdAt,
     required this.updatedAt,
+    this.decisions = const [],
   });
 
   /// Create from HTTP API response (legacy format)
@@ -107,7 +168,17 @@ class Job {
       cost: json['cost'] != null ? JobCost.fromMap(json['cost'] as Map<String, dynamic>) : null,
       createdAt: _parseDateTime(json['created_at']),
       updatedAt: _parseDateTime(json['updated_at']),
+      decisions: _parseDecisions(json['decisions']),
     );
+  }
+
+  static List<JobDecision> _parseDecisions(dynamic json) {
+    if (json == null) return [];
+    if (json is! List) return [];
+    return json
+        .whereType<Map<String, dynamic>>()
+        .map((e) => JobDecision.fromJson(e))
+        .toList();
   }
 
   /// Create from Firestore document
@@ -130,6 +201,7 @@ class Job {
       cost: data['cost'] != null ? JobCost.fromMap(data['cost'] as Map<String, dynamic>) : null,
       createdAt: _parseFirestoreTimestamp(data['created_at']),
       updatedAt: _parseFirestoreTimestamp(data['updated_at']),
+      decisions: _parseDecisions(data['decisions']),
     );
   }
 

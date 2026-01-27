@@ -4,9 +4,12 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/file_diff_model.dart';
+import '../models/job_model.dart';
 import '../providers/issue_board_provider.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
+import '../widgets/decisions/decision_card.dart';
+import '../widgets/decisions/decisions_list.dart';
 import '../widgets/diff/diff_summary_card.dart';
 import 'diff_review_screen.dart';
 import 'feedback_screen.dart';
@@ -690,6 +693,9 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
 
           const SizedBox(height: 16),
 
+          // Decisions section (if any)
+          _buildDecisionsSection(),
+
           // Issue body
           if (body.isNotEmpty) ...[
             const Text(
@@ -911,6 +917,11 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
                 const Spacer(),
                 // Diff count indicator
                 if (_activeJobId != null) _buildDiffIndicator(),
+                // Decisions count indicator
+                if (_activeJobId != null) ...[
+                  const SizedBox(width: 8),
+                  _buildDecisionsIndicator(),
+                ],
                 if (_activeJobId != null)
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
@@ -1099,6 +1110,136 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF58A6FF),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDecisionsIndicator() {
+    final provider = context.watch<IssueBoardProvider>();
+    final decisions = _activeJobId != null ? provider.getJobDecisions(_activeJobId!) : <JobDecision>[];
+
+    if (decisions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return DecisionChip(
+      decisionCount: decisions.length,
+      onTap: () => _showDecisionsBottomSheet(decisions),
+    );
+  }
+
+  /// Build decisions section for the Details tab
+  Widget _buildDecisionsSection() {
+    final provider = context.watch<IssueBoardProvider>();
+    final issueKey = '${widget.repo}#${widget.issueNum}';
+    final issue = provider.getIssue(issueKey);
+
+    if (issue == null) return const SizedBox.shrink();
+
+    // Collect all decisions from all jobs for this issue
+    final allDecisions = <JobDecision>[];
+    for (final job in issue.jobs) {
+      allDecisions.addAll(job.decisions);
+    }
+
+    if (allDecisions.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: DecisionsList(
+        decisions: allDecisions,
+        initiallyExpanded: false,
+      ),
+    );
+  }
+
+  void _showDecisionsBottomSheet(List<JobDecision> decisions) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF30363D),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF238636).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.lightbulb_outline,
+                      size: 20,
+                      color: Color(0xFF3FB950),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'DECISIONS',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFE6EDF3),
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        Text(
+                          '${decisions.length} choice${decisions.length == 1 ? '' : 's'} made by Claude',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Color(0xFF8B949E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(color: Color(0xFF30363D), height: 1),
+            // Decisions list
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: decisions.length,
+                itemBuilder: (context, index) => DecisionCard(
+                  decision: decisions[index],
+                  isExpanded: false,
+                ),
               ),
             ),
           ],

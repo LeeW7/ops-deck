@@ -602,6 +602,24 @@ class IssueBoardProvider with ChangeNotifier {
   /// Get a specific issue
   Issue? getIssue(String key) => _issues[key];
 
+  /// Get a specific job by ID
+  Job? getJob(String jobId) {
+    for (final issue in _issues.values) {
+      for (final job in issue.jobs) {
+        if (job.issueId == jobId) {
+          return job;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Get decisions for a specific job
+  List<JobDecision> getJobDecisions(String jobId) {
+    final job = getJob(jobId);
+    return job?.decisions ?? [];
+  }
+
   /// Proceed with issue (trigger next phase) - legacy method
   Future<bool> proceedWithIssue(String repo, int issueNum) async {
     try {
