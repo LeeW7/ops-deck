@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1440, initial-scale=1.0">
+  <title>Pull to Refresh - Desktop/Tablet Mockup</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0D1117;
+      color: #E6EDF3;
+      min-height: 100vh;
+    }
+
+    .mockup-label {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #58A6FF;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 100;
+    }
+
+    .app-bar {
+      height: 56px;
+      background: #161B22;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      border-bottom: 1px solid #30363D;
+    }
+
+    .app-title {
+      font-family: 'SF Mono', monospace;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .app-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      color: #8B949E;
+      cursor: pointer;
+    }
+
+    .icon-btn:hover {
+      background: #21262D;
+    }
+
+    .repo-chips {
+      padding: 12px 24px;
+      display: flex;
+      gap: 8px;
+      background: #161B22;
+      border-bottom: 1px solid #30363D;
+    }
+
+    .chip {
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      background: #21262D;
+      color: #8B949E;
+      cursor: pointer;
+    }
+
+    .chip:hover {
+      background: #30363D;
+    }
+
+    .chip.selected {
+      background: #1F6FEB;
+      color: white;
+    }
+
+    .main-content {
+      padding: 24px;
+    }
+
+    /* Refresh Button for Desktop */
+    .refresh-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .refresh-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #21262D;
+      border: 1px solid #30363D;
+      border-radius: 6px;
+      color: #E6EDF3;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .refresh-btn:hover {
+      background: #30363D;
+      border-color: #8B949E;
+    }
+
+    .refresh-btn.loading {
+      color: #8B949E;
+    }
+
+    .refresh-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .refresh-btn.loading svg {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .last-updated {
+      font-size: 12px;
+      color: #8B949E;
+    }
+
+    .done-header {
+      padding: 12px 16px;
+      background: #21262D;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      margin-bottom: 16px;
+    }
+
+    .done-header:hover {
+      background: #30363D;
+    }
+
+    .done-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .done-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3FB950;
+    }
+
+    .done-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .done-count {
+      font-size: 12px;
+      color: #8B949E;
+    }
+
+    /* Kanban Columns */
+    .kanban-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      height: calc(100vh - 220px);
+    }
+
+    .kanban-column {
+      background: #161B22;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .column-header {
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #30363D;
+      flex-shrink: 0;
+    }
+
+    .column-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .status-dot.needs-action { background: #F0883E; }
+    .status-dot.running { background: #58A6FF; }
+    .status-dot.failed { background: #F85149; }
+
+    .column-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .column-count {
+      font-size: 12px;
+      color: #8B949E;
+      background: #21262D;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .issue-list {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .issue-card {
+      background: #21262D;
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .issue-card:hover {
+      background: #30363D;
+    }
+
+    .issue-card.needs-action { border-left: 3px solid #F0883E; }
+    .issue-card.running { border-left: 3px solid #58A6FF; }
+    .issue-card.failed { border-left: 3px solid #F85149; }
+
+    .issue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .issue-number {
+      font-size: 12px;
+      color: #58A6FF;
+      font-family: monospace;
+    }
+
+    .issue-phase {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .issue-phase.plan { background: #F0883E20; color: #F0883E; }
+    .issue-phase.running { background: #58A6FF20; color: #58A6FF; }
+    .issue-phase.error { background: #F8514920; color: #F85149; }
+
+    .issue-title {
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .issue-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .issue-repo {
+      font-size: 11px;
+      color: #8B949E;
+    }
+
+    .issue-time {
+      font-size: 11px;
+      color: #8B949E;
+    }
+
+    /* FAB */
+    .fab {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      width: 56px;
+      height: 56px;
+      background: #238636;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .fab:hover {
+      background: #2EA043;
+      transform: scale(1.05);
+    }
+
+    .fab svg {
+      width: 24px;
+      height: 24px;
+      color: white;
+    }
+
+    /* Annotation */
+    .annotation {
+      position: fixed;
+      background: #238636;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      z-index: 50;
+    }
+
+    .annotation::before {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 0;
+    }
+
+    .annotation.bottom::before {
+      top: -8px;
+      left: 20px;
+      border-bottom: 8px solid #238636;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+    }
+
+    .annotation-refresh {
+      top: 180px;
+      left: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-label">Desktop/Tablet (1440px) - Manual Refresh Button</div>
+
+  <div class="annotation bottom annotation-refresh">Desktop uses a refresh button instead of pull-to-refresh gesture</div>
+
+  <div class="app-bar">
+    <span class="app-title">claude-ops</span>
+    <div class="app-actions">
+      <span class="icon-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+        </svg>
+      </span>
+      <span class="icon-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+      </span>
+      <span class="icon-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58z"/>
+        </svg>
+      </span>
+    </div>
+  </div>
+
+  <div class="repo-chips">
+    <span class="chip selected">ops-deck</span>
+    <span class="chip">claude-ops</span>
+    <span class="chip">workflow-templates</span>
+  </div>
+
+  <div class="main-content">
+    <div class="refresh-row">
+      <button class="refresh-btn loading">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+        </svg>
+        <span>Refreshing...</span>
+      </button>
+      <span class="last-updated">Last updated: just now</span>
+    </div>
+
+    <div class="done-header">
+      <div class="done-header-left">
+        <div class="done-dot"></div>
+        <span class="done-label">Done</span>
+      </div>
+      <span class="done-count">12 issues</span>
+    </div>
+
+    <div class="kanban-board">
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title-row">
+            <div class="status-dot needs-action"></div>
+            <span class="column-title">Needs Action</span>
+          </div>
+          <span class="column-count">3</span>
+        </div>
+
+        <div class="issue-list">
+          <div class="issue-card needs-action">
+            <div class="issue-header">
+              <span class="issue-number">#26</span>
+              <span class="issue-phase plan">Plan Ready</span>
+            </div>
+            <div class="issue-title">Add pull down to refresh to home page</div>
+            <div class="issue-footer">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-time">2m ago</span>
+            </div>
+          </div>
+
+          <div class="issue-card needs-action">
+            <div class="issue-header">
+              <span class="issue-number">#24</span>
+              <span class="issue-phase plan">Review</span>
+            </div>
+            <div class="issue-title">Implement dark mode toggle in settings</div>
+            <div class="issue-footer">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-time">15m ago</span>
+            </div>
+          </div>
+
+          <div class="issue-card needs-action">
+            <div class="issue-header">
+              <span class="issue-number">#18</span>
+              <span class="issue-phase plan">Waiting</span>
+            </div>
+            <div class="issue-title">Add keyboard shortcuts documentation</div>
+            <div class="issue-footer">
+              <span class="issue-repo">claude-ops</span>
+              <span class="issue-time">1h ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title-row">
+            <div class="status-dot running"></div>
+            <span class="column-title">Running</span>
+          </div>
+          <span class="column-count">2</span>
+        </div>
+
+        <div class="issue-list">
+          <div class="issue-card running">
+            <div class="issue-header">
+              <span class="issue-number">#22</span>
+              <span class="issue-phase running">Implementing</span>
+            </div>
+            <div class="issue-title">Add WebSocket reconnection logic</div>
+            <div class="issue-footer">
+              <span class="issue-repo">claude-ops</span>
+              <span class="issue-time">5m ago</span>
+            </div>
+          </div>
+
+          <div class="issue-card running">
+            <div class="issue-header">
+              <span class="issue-number">#20</span>
+              <span class="issue-phase running">Planning</span>
+            </div>
+            <div class="issue-title">Refactor job polling mechanism</div>
+            <div class="issue-footer">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-time">12m ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title-row">
+            <div class="status-dot failed"></div>
+            <span class="column-title">Failed</span>
+          </div>
+          <span class="column-count">1</span>
+        </div>
+
+        <div class="issue-list">
+          <div class="issue-card failed">
+            <div class="issue-header">
+              <span class="issue-number">#15</span>
+              <span class="issue-phase error">Build Error</span>
+            </div>
+            <div class="issue-title">Fix iOS build warnings</div>
+            <div class="issue-footer">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-time">2h ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fab">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+    </svg>
+  </div>
+</body>
+</html>

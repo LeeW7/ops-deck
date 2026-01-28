@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=430, initial-scale=1.0">
+  <title>Pull to Refresh - Mobile Mockup</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0D1117;
+      color: #E6EDF3;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+    }
+
+    .phone-frame {
+      width: 430px;
+      height: 932px;
+      background: #0D1117;
+      border-radius: 40px;
+      border: 3px solid #30363D;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .status-bar {
+      height: 44px;
+      background: #161B22;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .app-bar {
+      height: 56px;
+      background: #161B22;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid #30363D;
+    }
+
+    .app-title {
+      font-family: 'SF Mono', monospace;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .app-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      color: #8B949E;
+    }
+
+    .repo-chips {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      background: #161B22;
+    }
+
+    .chip {
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      background: #21262D;
+      color: #8B949E;
+      white-space: nowrap;
+    }
+
+    .chip.selected {
+      background: #1F6FEB;
+      color: white;
+    }
+
+    /* Pull to Refresh Indicator */
+    .pull-indicator {
+      position: absolute;
+      top: 156px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #30363D;
+      border-top-color: #58A6FF;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .pull-text {
+      font-size: 12px;
+      color: #8B949E;
+    }
+
+    .done-header {
+      margin: 12px 16px 8px;
+      padding: 12px 16px;
+      background: #21262D;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .done-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .done-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3FB950;
+    }
+
+    .done-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .done-count {
+      font-size: 12px;
+      color: #8B949E;
+    }
+
+    /* Kanban Column */
+    .content-area {
+      height: calc(100% - 156px - 48px);
+      overflow: hidden;
+      position: relative;
+      /* Pulled down state */
+      transform: translateY(60px);
+    }
+
+    .kanban-column {
+      margin: 8px 16px 8px 8px;
+      background: #161B22;
+      border-radius: 12px;
+      height: calc(100% - 16px);
+      overflow: hidden;
+    }
+
+    .column-header {
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #30363D;
+    }
+
+    .column-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .status-dot.needs-action {
+      background: #F0883E;
+    }
+
+    .column-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .column-count {
+      font-size: 12px;
+      color: #8B949E;
+      background: #21262D;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .issue-list {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      height: calc(100% - 60px);
+    }
+
+    .issue-card {
+      background: #21262D;
+      border-radius: 8px;
+      padding: 12px;
+      border-left: 3px solid #F0883E;
+    }
+
+    .issue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .issue-number {
+      font-size: 12px;
+      color: #58A6FF;
+      font-family: monospace;
+    }
+
+    .issue-phase {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #F0883E20;
+      color: #F0883E;
+    }
+
+    .issue-title {
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .issue-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .issue-repo {
+      font-size: 11px;
+      color: #8B949E;
+    }
+
+    .issue-time {
+      font-size: 11px;
+      color: #8B949E;
+    }
+
+    /* Page Indicators */
+    .page-indicators {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+    }
+
+    .indicator {
+      height: 8px;
+      border-radius: 4px;
+      transition: all 0.3s;
+    }
+
+    .indicator.active {
+      width: 24px;
+      background: #F0883E;
+    }
+
+    .indicator:not(.active) {
+      width: 8px;
+      background: #F0883E40;
+    }
+
+    /* FAB */
+    .fab {
+      position: absolute;
+      bottom: 80px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      background: #238636;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .fab svg {
+      width: 24px;
+      height: 24px;
+      color: white;
+    }
+
+    /* Labels */
+    .mockup-label {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #58A6FF;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 100;
+    }
+
+    .annotation {
+      position: absolute;
+      background: #238636;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .annotation::before {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 0;
+    }
+
+    .annotation.left::before {
+      right: -8px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-left: 8px solid #238636;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+    }
+
+    .annotation.bottom::before {
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-bottom: 8px solid #238636;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+    }
+
+    .annotation-ptr {
+      top: 190px;
+      left: 180px;
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-label">Mobile (430px) - Pull to Refresh Active State</div>
+
+  <div class="annotation left annotation-ptr">RefreshIndicator showing spinner</div>
+
+  <div class="phone-frame">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>100%</span>
+    </div>
+
+    <div class="app-bar">
+      <span class="app-title">claude-ops</span>
+      <div class="app-actions">
+        <span class="icon-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+          </svg>
+        </span>
+        <span class="icon-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+        </span>
+        <span class="icon-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58z"/>
+          </svg>
+        </span>
+      </div>
+    </div>
+
+    <div class="repo-chips">
+      <span class="chip selected">ops-deck</span>
+      <span class="chip">claude-ops</span>
+      <span class="chip">workflow-templates</span>
+    </div>
+
+    <!-- Pull to Refresh Indicator -->
+    <div class="pull-indicator">
+      <div class="spinner"></div>
+      <span class="pull-text">Refreshing...</span>
+    </div>
+
+    <div class="content-area">
+      <div class="done-header">
+        <div class="done-header-left">
+          <div class="done-dot"></div>
+          <span class="done-label">Done</span>
+        </div>
+        <span class="done-count">12 issues</span>
+      </div>
+
+      <div class="kanban-column">
+        <div class="column-header">
+          <div class="column-title-row">
+            <div class="status-dot needs-action"></div>
+            <span class="column-title">Needs Action</span>
+          </div>
+          <span class="column-count">3</span>
+        </div>
+
+        <div class="issue-list">
+          <div class="issue-card">
+            <div class="issue-header">
+              <span class="issue-number">#26</span>
+              <span class="issue-phase">Plan Ready</span>
+            </div>
+            <div class="issue-title">Add pull down to refresh to home page</div>
+            <div class="issue-footer">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-time">2m ago</span>
+            </div>
+          </div>
+
+          <div class="issue-card">
+            <div class="issue-header">
+              <span class="issue-number">#24</span>
+              <span class="issue-phase">Review</span>
+            </div>
+            <div class="issue-title">Implement dark mode toggle in settings</div>
+            <div class="issue-footer">
+              <span class="issue-repo">ops-deck</span>
+              <span class="issue-time">15m ago</span>
+            </div>
+          </div>
+
+          <div class="issue-card">
+            <div class="issue-header">
+              <span class="issue-number">#18</span>
+              <span class="issue-phase">Waiting</span>
+            </div>
+            <div class="issue-title">Add keyboard shortcuts documentation</div>
+            <div class="issue-footer">
+              <span class="issue-repo">claude-ops</span>
+              <span class="issue-time">1h ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-indicators">
+      <div class="indicator active"></div>
+      <div class="indicator"></div>
+      <div class="indicator"></div>
+    </div>
+
+    <div class="fab">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
