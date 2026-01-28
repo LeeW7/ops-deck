@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/preview_model.dart';
 
 /// WebSocket error types for better error handling
 enum WsErrorType {
@@ -1013,6 +1014,8 @@ enum JobEventType {
   jobStatusChanged,
   jobCompleted,
   jobFailed,
+  previewStatusChanged,
+  testResultsUpdated,
   unknown;
 
   static JobEventType fromString(String value) {
@@ -1025,6 +1028,10 @@ enum JobEventType {
         return JobEventType.jobCompleted;
       case 'jobFailed':
         return JobEventType.jobFailed;
+      case 'previewStatusChanged':
+        return JobEventType.previewStatusChanged;
+      case 'testResultsUpdated':
+        return JobEventType.testResultsUpdated;
       default:
         return JobEventType.unknown;
     }
@@ -1040,6 +1047,9 @@ class JobEventData {
   final String command;
   final String status;
   final JobCostData? cost;
+  // Preview-related fields (for previewStatusChanged events)
+  final PreviewDeployment? preview;
+  final List<TestResult>? testResults;
 
   JobEventData({
     required this.id,
@@ -1049,18 +1059,28 @@ class JobEventData {
     required this.command,
     required this.status,
     this.cost,
+    this.preview,
+    this.testResults,
   });
 
   factory JobEventData.fromJson(Map<String, dynamic> json) {
     return JobEventData(
       id: json['id'] as String? ?? '',
       repo: json['repo'] as String? ?? '',
-      issueNum: json['issueNum'] as int? ?? 0,
-      issueTitle: json['issueTitle'] as String? ?? '',
+      issueNum: json['issueNum'] as int? ?? json['issue_num'] as int? ?? 0,
+      issueTitle: json['issueTitle'] as String? ?? json['issue_title'] as String? ?? '',
       command: json['command'] as String? ?? '',
       status: json['status'] as String? ?? '',
       cost: json['cost'] != null
           ? JobCostData.fromJson(json['cost'] as Map<String, dynamic>)
+          : null,
+      preview: json['preview'] != null
+          ? PreviewDeployment.fromJson(json['preview'] as Map<String, dynamic>)
+          : null,
+      testResults: json['test_results'] != null || json['testResults'] != null
+          ? ((json['test_results'] ?? json['testResults']) as List<dynamic>)
+              .map((t) => TestResult.fromJson(t as Map<String, dynamic>))
+              .toList()
           : null,
     );
   }

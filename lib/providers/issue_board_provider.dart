@@ -268,6 +268,12 @@ class IssueBoardProvider with ChangeNotifier {
         _cache.updateJobStatus(job.id, job.status);
         notifyListeners();
         break;
+      case JobEventType.previewStatusChanged:
+      case JobEventType.testResultsUpdated:
+        // Preview events are handled by PreviewProvider
+        // Just notify listeners to refresh UI
+        notifyListeners();
+        break;
       case JobEventType.unknown:
         break;
     }

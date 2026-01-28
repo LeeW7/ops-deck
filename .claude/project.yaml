@@ -1,0 +1,17 @@
+project:
+  type: flutter
+  name: Ops Deck
+
+preview:
+  enabled: true
+  auto_deploy: true
+  platform: firebase
+
+  firebase:
+    groups:
+      - testers
+      - preview
+
+tests:
+  required: true
+  command: "flutter test"

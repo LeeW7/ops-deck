@@ -1,4 +1,5 @@
 import 'job_model.dart';
+import 'preview_model.dart';
 
 /// Workflow phases for an issue
 enum WorkflowPhase {
@@ -96,6 +97,7 @@ class Issue {
   final bool issueClosed;
   final int revisionCount;
   final List<String> completedPhases;
+  final ValidationState? validationState;
 
   Issue({
     required this.issueNum,
@@ -110,7 +112,23 @@ class Issue {
     this.issueClosed = false,
     this.revisionCount = 0,
     this.completedPhases = const [],
+    this.validationState,
   });
+
+  /// Whether this issue has a preview available
+  bool get hasPreview => validationState?.hasPreviewUrl ?? false;
+
+  /// Get the preview URL (web or download)
+  String? get previewUrl =>
+      validationState?.preview?.previewUrl ??
+      validationState?.preview?.downloadUrl;
+
+  /// Whether all tests are passing
+  bool get allTestsPassing => validationState?.allTestsPassing ?? false;
+
+  /// Whether tests are available
+  bool get hasTests =>
+      validationState != null && validationState!.testResults.isNotEmpty;
 
   /// Derive issue status from jobs for Kanban column placement
   IssueStatus get status {
@@ -257,6 +275,7 @@ class Issue {
     bool? issueClosed,
     int? revisionCount,
     List<String>? completedPhases,
+    ValidationState? validationState,
   }) {
     return Issue(
       issueNum: issueNum ?? this.issueNum,
@@ -271,6 +290,7 @@ class Issue {
       issueClosed: issueClosed ?? this.issueClosed,
       revisionCount: revisionCount ?? this.revisionCount,
       completedPhases: completedPhases ?? this.completedPhases,
+      validationState: validationState ?? this.validationState,
     );
   }
 }

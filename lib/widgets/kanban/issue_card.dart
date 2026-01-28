@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../models/issue_model.dart';
+import '../../models/preview_model.dart';
+import '../../providers/preview_provider.dart';
 
 /// Callback for context menu trigger, provides issue and position
 typedef IssueContextMenuCallback = void Function(Issue issue, Offset position);
@@ -137,9 +140,75 @@ class _IssueCardState extends State<IssueCard> {
           ),
         ),
         const Spacer(),
+        // Validation indicator (preview/test status)
+        _buildValidationIndicator(context),
+        const SizedBox(width: 6),
         // Status indicator
         _buildStatusIndicator(statusColor),
       ],
+    );
+  }
+
+  Widget _buildValidationIndicator(BuildContext context) {
+    final previewProvider = context.watch<PreviewProvider>();
+    final validationState = previewProvider.getValidationState(widget.issue.key);
+
+    if (validationState == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Determine what to show based on validation state
+    final hasTests = validationState.testResults.isNotEmpty;
+    final allTestsPassing = validationState.allTestsPassing;
+    final previewReady = validationState.previewReady;
+    final previewDeploying = validationState.preview?.status == PreviewStatus.deploying;
+    final previewFailed = validationState.preview?.status == PreviewStatus.failed;
+
+    // Don't show if no meaningful state
+    if (!hasTests && validationState.preview == null) {
+      return const SizedBox.shrink();
+    }
+
+    Color color;
+    IconData icon;
+    bool showSpinner = false;
+
+    if (previewDeploying) {
+      color = const Color(0xFFD29922);
+      icon = Icons.cloud_upload;
+      showSpinner = true;
+    } else if (previewFailed || (hasTests && !allTestsPassing)) {
+      color = const Color(0xFFF85149);
+      icon = Icons.error_outline;
+    } else if (previewReady && allTestsPassing) {
+      color = const Color(0xFF3FB950);
+      icon = Icons.verified;
+    } else if (previewReady) {
+      color = const Color(0xFF58A6FF);
+      icon = Icons.preview;
+    } else if (hasTests && allTestsPassing) {
+      color = const Color(0xFF3FB950);
+      icon = Icons.check_circle_outline;
+    } else {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        shape: BoxShape.circle,
+      ),
+      child: showSpinner
+          ? SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            )
+          : Icon(icon, size: 10, color: color),
     );
   }
 

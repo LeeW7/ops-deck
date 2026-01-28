@@ -1,0 +1,181 @@
+name: Preview Deployment
+
+on:
+  repository_dispatch:
+    types: [preview-deploy]
+  workflow_dispatch:
+    inputs:
+      issue_num:
+        description: 'Issue number'
+        required: true
+      branch:
+        description: 'Branch to deploy'
+        required: true
+
+env:
+  CALLBACK_URL: ${{ secrets.CALLBACK_URL }}
+  CALLBACK_SECRET: ${{ secrets.PREVIEW_CALLBACK_SECRET }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      tests_passed: ${{ steps.test.outputs.passed }}
+      tests_failed: ${{ steps.test.outputs.failed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.branch || inputs.branch }}
+
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        id: test
+        run: |
+          set +e
+          flutter test --machine > test-results.json 2>&1
+          TEST_EXIT=$?
+
+          # Parse results
+          PASSED=$(cat test-results.json | grep -o '"result":"success"' | wc -l | tr -d ' ')
+          FAILED=$(cat test-results.json | grep -o '"result":"failure"' | wc -l | tr -d ' ')
+          SKIPPED=$(cat test-results.json | grep -o '"result":"skipped"' | wc -l | tr -d ' ')
+
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
+
+          exit $TEST_EXIT
+        continue-on-error: true
+
+      - name: Report test results
+        if: always()
+        run: |
+          ISSUE_NUM="${{ github.event.client_payload.issue_num || inputs.issue_num }}"
+
+          FAILURES="[]"
+          if [ -f test-results.json ]; then
+            FAILURES=$(cat test-results.json | jq -s '[.[] | select(.result == "failure") | {test_name: .name, message: .error.message // "Test failed", stack_trace: .error.stackTrace // null}]' 2>/dev/null || echo "[]")
+          fi
+
+          curl -X POST "$CALLBACK_URL/api/test-callback" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $CALLBACK_SECRET" \
+            -d @- << EOF
+          {
+            "repo": "${{ github.repository }}",
+            "issue_num": $ISSUE_NUM,
+            "commit_sha": "${{ github.sha }}",
+            "test_suite": "Flutter Tests",
+            "passed": ${{ steps.test.outputs.passed || 0 }},
+            "failed": ${{ steps.test.outputs.failed || 0 }},
+            "skipped": ${{ steps.test.outputs.skipped || 0 }},
+            "duration": 0,
+            "failures": $FAILURES,
+            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+
+  deploy:
+    needs: test
+    if: needs.test.outputs.tests_failed == '0' || needs.test.outputs.tests_failed == ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.branch || inputs.branch }}
+
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload to Firebase App Distribution
+        id: firebase
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers,preview
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotes: |
+            Preview build for Issue #${{ github.event.client_payload.issue_num || inputs.issue_num }}
+            Branch: ${{ github.event.client_payload.branch || inputs.branch }}
+            Commit: ${{ github.sha }}
+
+      - name: Report preview ready
+        run: |
+          ISSUE_NUM="${{ github.event.client_payload.issue_num || inputs.issue_num }}"
+          EXPIRES_AT=$(date -d '+7 days' +%s 2>/dev/null || date -v +7d +%s)
+
+          curl -X POST "$CALLBACK_URL/api/preview-callback" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $CALLBACK_SECRET" \
+            -d @- << EOF
+          {
+            "repo": "${{ github.repository }}",
+            "issue_num": $ISSUE_NUM,
+            "status": "ready",
+            "project_type": "flutter",
+            "download_url": "https://appdistribution.firebase.google.com/testerapps",
+            "build_id": "${{ github.run_id }}",
+            "commit_sha": "${{ github.sha }}",
+            "expires_at": $EXPIRES_AT
+          }
+          EOF
+
+  report-failure:
+    needs: test
+    if: needs.test.outputs.tests_failed != '0' && needs.test.outputs.tests_failed != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report preview blocked
+        run: |
+          ISSUE_NUM="${{ github.event.client_payload.issue_num || inputs.issue_num }}"
+
+          curl -X POST "$CALLBACK_URL/api/preview-callback" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $CALLBACK_SECRET" \
+            -d @- << EOF
+          {
+            "repo": "${{ github.repository }}",
+            "issue_num": $ISSUE_NUM,
+            "status": "failed",
+            "project_type": "flutter",
+            "error_message": "Tests failed (${{ needs.test.outputs.tests_failed }} failures) - preview deployment blocked",
+            "commit_sha": "${{ github.sha }}"
+          }
+          EOF

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_model.dart';
 import '../models/message_model.dart';
 import '../models/session_model.dart';
+import '../models/preview_model.dart';
 
 /// Types of API errors for better error handling
 enum ApiErrorType {
@@ -613,6 +614,79 @@ class ApiService {
       return;
     } else {
       throw _handleErrorResponse(response, 'delete session');
+    }
+  }
+
+  // ============================================================
+  // Preview & Validation API Methods
+  // ============================================================
+
+  /// Get preview state for an issue (preview deployment + test results)
+  Future<ValidationState> getPreviewState(String repo, int issueNum) async {
+    final response = await _getWithRetry(
+      '/issues/$repo/$issueNum/preview',
+      timeout: const Duration(seconds: 15),
+    );
+
+    if (response.statusCode == 200) {
+      final data = _parseJson(response) as Map<String, dynamic>;
+      return ValidationState.fromJson(data);
+    } else if (response.statusCode == 404) {
+      // No preview state yet - return empty state
+      final repoSlug = repo.split('/').last;
+      return ValidationState.empty('$repoSlug-$issueNum');
+    } else {
+      throw _handleErrorResponse(response, 'fetch preview state');
+    }
+  }
+
+  /// Trigger a preview deployment for an issue
+  Future<PreviewDeployment> triggerPreview(String repo, int issueNum) async {
+    // No retry for trigger to avoid duplicate deployments
+    final response = await _postWithRetry(
+      '/issues/$repo/$issueNum/preview',
+      timeout: const Duration(seconds: 30),
+      maxRetries: 0,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = _parseJson(response) as Map<String, dynamic>;
+      return PreviewDeployment.fromJson(data);
+    } else if (response.statusCode == 409) {
+      // Preview already in progress
+      final data = _parseJson(response);
+      throw ApiException(
+        data['reason'] ?? 'Preview deployment already in progress',
+        type: ApiErrorType.conflict,
+        statusCode: 409,
+      );
+    } else {
+      throw _handleErrorResponse(response, 'trigger preview');
+    }
+  }
+
+  /// Get test results for an issue
+  Future<List<TestResult>> getTestResults(String repo, int issueNum) async {
+    final response = await _getWithRetry(
+      '/issues/$repo/$issueNum/tests',
+      timeout: const Duration(seconds: 15),
+    );
+
+    if (response.statusCode == 200) {
+      final data = _parseJson(response);
+      if (data is List) {
+        return data.map((t) => TestResult.fromJson(t as Map<String, dynamic>)).toList();
+      } else if (data is Map && data['results'] != null) {
+        return (data['results'] as List)
+            .map((t) => TestResult.fromJson(t as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } else if (response.statusCode == 404) {
+      // No test results yet
+      return [];
+    } else {
+      throw _handleErrorResponse(response, 'fetch test results');
     }
   }
 

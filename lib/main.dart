@@ -8,6 +8,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'providers/job_provider.dart';
 import 'providers/issue_board_provider.dart';
 import 'providers/quick_session_provider.dart';
+import 'providers/preview_provider.dart';
 import 'screens/kanban_board_screen.dart';
 
 // Handle background messages
@@ -166,6 +167,7 @@ class _OpsDeckAppState extends State<OpsDeckApp> {
         ChangeNotifierProvider(create: (_) => IssueProvider()),
         ChangeNotifierProvider(create: (_) => IssueBoardProvider()),
         ChangeNotifierProvider(create: (_) => QuickSessionProvider()),
+        ChangeNotifierProvider(create: (_) => PreviewProvider()),
       ],
       child: MaterialApp(
         title: 'Ops Deck',

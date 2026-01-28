@@ -5,13 +5,18 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/file_diff_model.dart';
 import '../models/job_model.dart';
+import '../models/preview_model.dart';
 import '../providers/issue_board_provider.dart';
+import '../providers/preview_provider.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../widgets/confidence/confidence_indicator.dart';
 import '../widgets/decisions/decision_card.dart';
 import '../widgets/decisions/decisions_list.dart';
 import '../widgets/diff/diff_summary_card.dart';
+import '../widgets/preview/preview_card.dart';
+import '../widgets/preview/test_results_card.dart';
+import '../widgets/preview/preview_banner.dart';
 import 'diff_review_screen.dart';
 import 'feedback_screen.dart';
 
@@ -87,9 +92,16 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _fetchIssueDetails();
     _setupWebSocket();
+    // Fetch validation state in background
+    _fetchValidationState();
+  }
+
+  Future<void> _fetchValidationState() async {
+    final previewProvider = context.read<PreviewProvider>();
+    await previewProvider.fetchValidationState(widget.repo, widget.issueNum);
   }
 
   @override
@@ -573,6 +585,7 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
           tabs: const [
             Tab(text: 'DETAILS'),
             Tab(text: 'LIVE'),
+            Tab(text: 'PREVIEW'),
             Tab(text: 'COSTS'),
           ],
         ),
@@ -582,6 +595,7 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
         children: [
           _buildBody(),
           _buildLiveTab(),
+          _buildPreviewTab(),
           _buildCostsTab(),
         ],
       ),
@@ -1747,6 +1761,284 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildPreviewTab() {
+    final previewProvider = context.watch<PreviewProvider>();
+    final repoSlug = widget.repo.split('/').last;
+    final issueKey = '$repoSlug-${widget.issueNum}';
+    final validationState = previewProvider.getValidationState(issueKey);
+    final isLoading = previewProvider.isLoading(issueKey);
+    final isTriggering = previewProvider.isTriggeringPreview(issueKey);
+
+    return RefreshIndicator(
+      onRefresh: () => previewProvider.fetchValidationState(widget.repo, widget.issueNum),
+      color: const Color(0xFF00FF41),
+      backgroundColor: const Color(0xFF161B22),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Validation status bar (if we have any state)
+            if (validationState != null &&
+                (validationState.testResults.isNotEmpty || validationState.preview != null)) ...[
+              ValidationStatusBar(state: validationState),
+              const SizedBox(height: 16),
+            ],
+
+            // Test Results Section
+            const Text(
+              'TEST RESULTS',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF8B949E),
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TestResultsCard(
+              results: validationState?.testResults ?? [],
+              initiallyExpanded: false,
+              onViewFailures: () => _showAllFailures(validationState),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Preview Section
+            const Text(
+              'PREVIEW DEPLOYMENT',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF8B949E),
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            PreviewCard(
+              preview: validationState?.preview,
+              isLoading: isLoading,
+              isTriggering: isTriggering,
+              onTrigger: () => _triggerPreview(previewProvider),
+              onRefresh: () => previewProvider.fetchValidationState(widget.repo, widget.issueNum),
+            ),
+
+            const SizedBox(height: 100), // Space for bottom bar
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _triggerPreview(PreviewProvider provider) async {
+    final result = await provider.triggerPreview(widget.repo, widget.issueNum);
+    if (mounted && result != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Preview deployment started',
+            style: TextStyle(fontFamily: 'monospace'),
+          ),
+          backgroundColor: Color(0xFF238636),
+        ),
+      );
+    } else if (mounted && provider.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            provider.error!,
+            style: const TextStyle(fontFamily: 'monospace'),
+          ),
+          backgroundColor: const Color(0xFFDA3633),
+        ),
+      );
+      provider.clearError();
+    }
+  }
+
+  void _showAllFailures(ValidationState? state) {
+    if (state == null || state.allFailures.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF30363D),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF85149).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.error_outline,
+                      size: 20,
+                      color: Color(0xFFF85149),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'TEST FAILURES',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFE6EDF3),
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        Text(
+                          '${state.allFailures.length} failure${state.allFailures.length == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Color(0xFF8B949E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(color: Color(0xFF30363D), height: 1),
+            // Failures list
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: state.allFailures.length,
+                itemBuilder: (context, index) {
+                  final failure = state.allFailures[index];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1117),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF30363D)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                failure.testName,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFE6EDF3),
+                                ),
+                              ),
+                            ),
+                            if (failure.location != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF30363D),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  failure.location!,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 10,
+                                    color: Color(0xFF8B949E),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (failure.suiteName != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            failure.suiteName!,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                              color: Color(0xFF6E7681),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Text(
+                          failure.message,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Color(0xFFF85149),
+                          ),
+                        ),
+                        if (failure.stackTrace != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF161B22),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              failure.stackTrace!,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 10,
+                                color: Color(0xFF8B949E),
+                              ),
+                              maxLines: 10,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
