@@ -525,6 +525,24 @@ gh pr create --draft --title "feat(#[ISSUE_NUMBER]): [Issue Title]" --body "$(ca
 ## Technical Approach
 [Copy from issue body]
 
+## Key Decisions
+
+Document 2-4 key technical decisions made during implementation:
+
+<<<DECISION>>>
+ACTION: [First major technical choice - be specific about classes/patterns/libraries]
+REASONING: [Why this approach - what problem it solves, constraints considered]
+ALTERNATIVES: [What else was considered and why rejected, or "None"]
+CATEGORY: [architecture|library|pattern|storage|api|testing|ui|performance|other]
+<<<END_DECISION>>>
+
+<<<DECISION>>>
+ACTION: [Second major technical choice]
+REASONING: [Why this approach]
+ALTERNATIVES: [What else was considered]
+CATEGORY: [category]
+<<<END_DECISION>>>
+
 ## Changes Made
 ### Files Modified
 - `path/to/file1.dart` - [description]
