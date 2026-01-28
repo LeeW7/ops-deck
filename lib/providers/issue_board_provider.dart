@@ -626,6 +626,12 @@ class IssueBoardProvider with ChangeNotifier {
     return job?.decisions ?? [];
   }
 
+  /// Get confidence for a specific job
+  JobConfidence? getJobConfidence(String jobId) {
+    final job = getJob(jobId);
+    return job?.confidence;
+  }
+
   /// Proceed with issue (trigger next phase) - legacy method
   Future<bool> proceedWithIssue(String repo, int issueNum) async {
     try {

@@ -93,6 +93,56 @@ CATEGORY: architecture
 
 ---
 
+## Confidence Assessment
+
+After completing implementation, provide an overall confidence assessment using this EXACT format:
+
+```
+<<<CONFIDENCE>>>
+SCORE: [0.0-1.0, e.g., 0.85]
+ASSESSMENT: [HIGH|MEDIUM|LOW]
+REASONING: [Why this confidence level - what's certain vs uncertain about the implementation]
+RISKS: [Any concerns, edge cases, or unknowns that may need attention, or "None identified"]
+<<<END_CONFIDENCE>>>
+```
+
+### Confidence Levels:
+- **HIGH (0.8-1.0):** Standard patterns, well-understood requirements, comprehensive tests
+- **MEDIUM (0.5-0.8):** Some complexity, minor unknowns, or limited test coverage
+- **LOW (0.0-0.5):** Significant unknowns, complex integrations, or potential edge cases
+
+### Example - High Confidence:
+```
+<<<CONFIDENCE>>>
+SCORE: 0.90
+ASSESSMENT: HIGH
+REASONING: Straightforward feature using well-established Flutter patterns. RefreshIndicator is the standard approach with predictable behavior. All quality gates passed and existing tests continue to work.
+RISKS: None identified - this is a common pattern used throughout the codebase.
+<<<END_CONFIDENCE>>>
+```
+
+### Example - Medium Confidence:
+```
+<<<CONFIDENCE>>>
+SCORE: 0.65
+ASSESSMENT: MEDIUM
+REASONING: Core functionality works but involves new WebSocket integration that wasn't fully testable in isolation. Manual testing recommended for connection edge cases.
+RISKS: WebSocket reconnection logic may need tuning based on real-world network conditions; Error handling for malformed server responses is minimal.
+<<<END_CONFIDENCE>>>
+```
+
+### Example - Low Confidence:
+```
+<<<CONFIDENCE>>>
+SCORE: 0.40
+ASSESSMENT: LOW
+REASONING: Complex state management changes touching multiple providers. Tests pass but coverage is limited for the new interaction patterns.
+RISKS: Race conditions possible between providers; Memory leaks if listeners not properly disposed; Needs thorough manual testing before merge.
+<<<END_CONFIDENCE>>>
+```
+
+---
+
 ## Prerequisites
 
 **Read these before proceeding:**
@@ -542,6 +592,15 @@ REASONING: [Why this approach]
 ALTERNATIVES: [What else was considered]
 CATEGORY: [category]
 <<<END_DECISION>>>
+
+## Confidence Assessment
+
+<<<CONFIDENCE>>>
+SCORE: [0.0-1.0]
+ASSESSMENT: [HIGH|MEDIUM|LOW]
+REASONING: [Why this confidence level]
+RISKS: [Any concerns or unknowns, or "None identified"]
+<<<END_CONFIDENCE>>>
 
 ## Changes Made
 ### Files Modified

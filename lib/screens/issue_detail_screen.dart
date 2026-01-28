@@ -8,6 +8,7 @@ import '../models/job_model.dart';
 import '../providers/issue_board_provider.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
+import '../widgets/confidence/confidence_indicator.dart';
 import '../widgets/decisions/decision_card.dart';
 import '../widgets/decisions/decisions_list.dart';
 import '../widgets/diff/diff_summary_card.dart';
@@ -696,6 +697,9 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
           // Decisions section (if any)
           _buildDecisionsSection(),
 
+          // Confidence section (if any)
+          _buildConfidenceSection(),
+
           // Issue body
           if (body.isNotEmpty) ...[
             const Text(
@@ -921,6 +925,11 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
                 if (_activeJobId != null) ...[
                   const SizedBox(width: 8),
                   _buildDecisionsIndicator(),
+                ],
+                // Confidence indicator
+                if (_activeJobId != null) ...[
+                  const SizedBox(width: 8),
+                  _buildConfidenceIndicator(),
                 ],
                 if (_activeJobId != null)
                   Padding(
@@ -1155,6 +1164,76 @@ class _IssueDetailScreenState extends State<IssueDetailScreen>
       child: DecisionsList(
         decisions: allDecisions,
         initiallyExpanded: false,
+      ),
+    );
+  }
+
+  Widget _buildConfidenceIndicator() {
+    final provider = context.watch<IssueBoardProvider>();
+    final confidence = _activeJobId != null ? provider.getJobConfidence(_activeJobId!) : null;
+
+    if (confidence == null) {
+      return const SizedBox.shrink();
+    }
+
+    return ConfidenceChip(
+      confidence: confidence,
+      onTap: () => _showConfidenceBottomSheet(confidence),
+    );
+  }
+
+  /// Build confidence section for the Details tab
+  Widget _buildConfidenceSection() {
+    final provider = context.watch<IssueBoardProvider>();
+    final repoSlug = widget.repo.split('/').last;
+    final issueKey = '$repoSlug-${widget.issueNum}';
+    final issue = provider.getIssue(issueKey);
+
+    if (issue == null) return const SizedBox.shrink();
+
+    // Get the most recent confidence from completed jobs
+    JobConfidence? latestConfidence;
+    for (final job in issue.jobs) {
+      if (job.confidence != null) {
+        latestConfidence = job.confidence;
+      }
+    }
+
+    if (latestConfidence == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: ConfidenceIndicator(confidence: latestConfidence),
+    );
+  }
+
+  void _showConfidenceBottomSheet(JobConfidence confidence) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF30363D),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ConfidenceIndicator(confidence: confidence),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }

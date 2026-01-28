@@ -61,6 +61,55 @@ class JobDecision {
   }
 }
 
+/// Confidence assessment for a job's implementation
+class JobConfidence {
+  final double score;
+  final String assessment; // HIGH, MEDIUM, LOW
+  final String reasoning;
+  final String? risks;
+
+  JobConfidence({
+    required this.score,
+    required this.assessment,
+    required this.reasoning,
+    this.risks,
+  });
+
+  factory JobConfidence.fromJson(Map<String, dynamic> json) {
+    return JobConfidence(
+      score: _parseScore(json['score']),
+      assessment: json['assessment'] as String? ?? 'MEDIUM',
+      reasoning: json['reasoning'] as String? ?? '',
+      risks: json['risks'] as String?,
+    );
+  }
+
+  static double _parseScore(dynamic value) {
+    if (value == null) return 0.5;
+    if (value is double) return value.clamp(0.0, 1.0);
+    if (value is int) return value.toDouble().clamp(0.0, 1.0);
+    if (value is String) return double.tryParse(value)?.clamp(0.0, 1.0) ?? 0.5;
+    return 0.5;
+  }
+
+  /// Get color based on confidence level
+  int get colorValue {
+    if (score >= 0.8) return 0xFF3FB950; // Green - high
+    if (score >= 0.5) return 0xFFD29922; // Yellow - medium
+    return 0xFFF85149; // Red - low
+  }
+
+  /// Get display label
+  String get displayLabel {
+    if (score >= 0.8) return 'High Confidence';
+    if (score >= 0.5) return 'Medium Confidence';
+    return 'Low Confidence';
+  }
+
+  /// Get percentage string
+  String get percentageString => '${(score * 100).round()}%';
+}
+
 class JobCost {
   final double totalUsd;
   final int inputTokens;
@@ -117,6 +166,7 @@ class Job {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<JobDecision> decisions;
+  final JobConfidence? confidence;
 
   Job({
     required this.issueId,
@@ -136,6 +186,7 @@ class Job {
     required this.createdAt,
     required this.updatedAt,
     this.decisions = const [],
+    this.confidence,
   });
 
   /// Create from HTTP API response (legacy format)
@@ -169,6 +220,7 @@ class Job {
       createdAt: _parseDateTime(json['created_at']),
       updatedAt: _parseDateTime(json['updated_at']),
       decisions: _parseDecisions(json['decisions']),
+      confidence: _parseConfidence(json['confidence']),
     );
   }
 
@@ -202,7 +254,14 @@ class Job {
       createdAt: _parseFirestoreTimestamp(data['created_at']),
       updatedAt: _parseFirestoreTimestamp(data['updated_at']),
       decisions: _parseDecisions(data['decisions']),
+      confidence: _parseConfidence(data['confidence']),
     );
+  }
+
+  static JobConfidence? _parseConfidence(dynamic json) {
+    if (json == null) return null;
+    if (json is! Map<String, dynamic>) return null;
+    return JobConfidence.fromJson(json);
   }
 
   static DateTime _parseDateTime(dynamic value) {
