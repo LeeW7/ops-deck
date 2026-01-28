@@ -10,7 +10,6 @@ preview:
   firebase:
     groups:
       - testers
-      - preview
 
 tests:
   required: true

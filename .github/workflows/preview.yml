@@ -138,7 +138,7 @@ jobs:
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers,preview
+          groups: testers
           file: build/app/outputs/flutter-apk/app-release.apk
           releaseNotes: |
             Preview build for Issue #${{ github.event.client_payload.issue_num || inputs.issue_num }}
