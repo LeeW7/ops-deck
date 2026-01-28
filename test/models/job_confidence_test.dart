@@ -34,9 +34,15 @@ void main() {
     });
 
     test('fromJson clamps score to valid range', () {
-      expect(JobConfidence.fromJson({'score': 1.5}).score, 1.0);
       expect(JobConfidence.fromJson({'score': -0.5}).score, 0.0);
       expect(JobConfidence.fromJson({'score': 0.75}).score, 0.75);
+      expect(JobConfidence.fromJson({'score': 150}).score, 1.0); // 150% clamped
+    });
+
+    test('fromJson handles 0-100 scale scores', () {
+      expect(JobConfidence.fromJson({'score': 95}).score, 0.95);
+      expect(JobConfidence.fromJson({'score': 85.5}).score, 0.855);
+      expect(JobConfidence.fromJson({'score': 50}).score, 0.50);
     });
 
     test('fromJson handles string score', () {

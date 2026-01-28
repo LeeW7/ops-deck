@@ -86,10 +86,21 @@ class JobConfidence {
 
   static double _parseScore(dynamic value) {
     if (value == null) return 0.5;
-    if (value is double) return value.clamp(0.0, 1.0);
-    if (value is int) return value.toDouble().clamp(0.0, 1.0);
-    if (value is String) return double.tryParse(value)?.clamp(0.0, 1.0) ?? 0.5;
-    return 0.5;
+    double score;
+    if (value is double) {
+      score = value;
+    } else if (value is int) {
+      score = value.toDouble();
+    } else if (value is String) {
+      score = double.tryParse(value) ?? 0.5;
+    } else {
+      return 0.5;
+    }
+    // Handle 0-100 scale (convert to 0-1)
+    if (score > 1.0) {
+      score = score / 100.0;
+    }
+    return score.clamp(0.0, 1.0);
   }
 
   /// Get color based on confidence level
