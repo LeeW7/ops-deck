@@ -43,33 +43,23 @@ class DoneColumnHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Label
-              Text(
-                'DONE',
+              // Label with inline count
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'DONE'),
+                    TextSpan(
+                      text: ' ($count)',
+                      style: const TextStyle(fontWeight: FontWeight.normal),
+                    ),
+                  ],
+                ),
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                   color: statusColor,
                   letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Count
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: statusColor,
-                  ),
                 ),
               ),
               const Spacer(),
