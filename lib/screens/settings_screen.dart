@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../providers/job_provider.dart';
 import '../providers/issue_board_provider.dart';
@@ -13,10 +14,12 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _urlController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  PackageInfo? _packageInfo;
 
   @override
   void initState() {
     super.initState();
+    _initPackageInfo();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final settings = context.read<SettingsProvider>();
       settings.loadSettings().then((_) {
@@ -25,6 +28,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       });
     });
+  }
+
+  Future<void> _initPackageInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _packageInfo = info);
+    }
   }
 
   @override
@@ -68,6 +78,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildActionButtons(settings),
                   const SizedBox(height: 40),
                   _buildInfoSection(),
+                  const SizedBox(height: 40),
+                  _buildAboutSection(),
                 ],
               ),
             ),
@@ -356,6 +368,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAboutSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('ABOUT'),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF30363D)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'App Version',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 14,
+                  color: Color(0xFF8B949E),
+                ),
+              ),
+              Text(
+                _packageInfo != null
+                    ? '${_packageInfo!.version}+${_packageInfo!.buildNumber}'
+                    : '...',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF00FF41),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
