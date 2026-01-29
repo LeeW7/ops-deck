@@ -1,25 +1,25 @@
 {
-  "lastUpdated": "2026-01-26",
-  "totalIssuesCompleted": 1,
-  "totalLinesWritten": 3795,
+  "lastUpdated": "2026-01-28",
+  "totalIssuesCompleted": 2,
+  "totalLinesWritten": 3873,
   "totalTestsGenerated": 0,
   "totalPatternsGraduated": 0,
-  "averageIssueComplexity": 7,
+  "averageIssueComplexity": 5,
   "specialistsCreated": [],
   "totals": {
-    "filesChanged": 12,
+    "filesChanged": 13,
     "filesAdded": 6,
-    "linesAdded": 3795,
-    "linesRemoved": 43,
+    "linesAdded": 3873,
+    "linesRemoved": 102,
     "testFilesAdded": 0,
     "testCasesAdded": 0,
-    "estimatedHoursSaved": 100
+    "estimatedHoursSaved": 104
   },
   "quarterlyBreakdown": {
     "2026-q1": {
-      "features": 1,
-      "linesAdded": 3795,
-      "hoursSaved": 100
+      "features": 2,
+      "linesAdded": 3873,
+      "hoursSaved": 104
     }
   },
   "features": [
@@ -35,6 +35,19 @@
       "estimatedManualHours": 106,
       "actualHours": 6,
       "hoursSaved": 100
+    },
+    {
+      "issueNumber": 32,
+      "prNumber": 33,
+      "title": "Add pull-to-refresh on Kanban board",
+      "completedAt": "2026-01-28",
+      "complexity": 3,
+      "linesAdded": 78,
+      "linesRemoved": 59,
+      "filesChanged": 1,
+      "estimatedManualHours": 5,
+      "actualHours": 1,
+      "hoursSaved": 4
     }
   ]
 }
