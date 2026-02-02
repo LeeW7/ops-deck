@@ -6,6 +6,7 @@ import '../models/file_diff_model.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../services/job_cache_service.dart';
+import '../services/notification_service.dart';
 
 /// Callback type for showing toast notifications
 typedef ToastCallback = void Function(String message, {VoidCallback? onUndo});
@@ -260,12 +261,20 @@ class IssueBoardProvider with ChangeNotifier {
     switch (event.type) {
       case JobEventType.jobCreated:
       case JobEventType.jobStatusChanged:
+        // Update or create the issue with new job status
+        _updateIssueFromEvent(issueKey, job);
+        // Update cache with new status
+        _cache.updateJobStatus(job.id, job.status);
+        notifyListeners();
+        break;
       case JobEventType.jobCompleted:
       case JobEventType.jobFailed:
         // Update or create the issue with new job status
         _updateIssueFromEvent(issueKey, job);
         // Update cache with new status
         _cache.updateJobStatus(job.id, job.status);
+        // Show notification if app is in background
+        _maybeShowNotification(event);
         notifyListeners();
         break;
       case JobEventType.previewStatusChanged:
@@ -276,6 +285,34 @@ class IssueBoardProvider with ChangeNotifier {
         break;
       case JobEventType.unknown:
         break;
+    }
+  }
+
+  /// Show notification for job completion/failure if app is in background
+  void _maybeShowNotification(JobEvent event) {
+    final notificationService = NotificationService();
+
+    // Skip if app is in foreground - user will see snackbar instead
+    if (notificationService.isInForeground) {
+      return;
+    }
+
+    final job = event.job;
+
+    if (event.type == JobEventType.jobCompleted) {
+      notificationService.showJobCompletedNotification(
+        issueTitle: job.issueTitle,
+        issueNum: job.issueNum,
+        repo: job.repo,
+        command: job.command,
+      );
+    } else if (event.type == JobEventType.jobFailed) {
+      notificationService.showJobFailedNotification(
+        issueTitle: job.issueTitle,
+        issueNum: job.issueNum,
+        repo: job.repo,
+        command: job.command,
+      );
     }
   }
 
