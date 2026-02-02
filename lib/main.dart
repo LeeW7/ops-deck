@@ -10,6 +10,8 @@ import 'providers/issue_board_provider.dart';
 import 'providers/quick_session_provider.dart';
 import 'providers/preview_provider.dart';
 import 'screens/kanban_board_screen.dart';
+import 'screens/issue_detail_screen.dart';
+import 'services/notification_service.dart';
 
 // Handle background messages
 @pragma('vm:entry-point')
@@ -60,11 +62,86 @@ class OpsDeckApp extends StatefulWidget {
   State<OpsDeckApp> createState() => _OpsDeckAppState();
 }
 
-class _OpsDeckAppState extends State<OpsDeckApp> {
+class _OpsDeckAppState extends State<OpsDeckApp> with WidgetsBindingObserver {
+  /// Global navigator key for notification deep linking
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupFirebaseMessaging();
+    _setupNotificationService();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final notificationService = NotificationService();
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App returned to foreground
+        notificationService.isInForeground = true;
+        if (kDebugMode) {
+          print('[OpsDeckApp] App resumed - refreshing data');
+        }
+        // Trigger data refresh
+        _refreshDataOnResume();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        // App went to background
+        notificationService.isInForeground = false;
+        if (kDebugMode) {
+          print('[OpsDeckApp] App paused/inactive');
+        }
+        break;
+      case AppLifecycleState.detached:
+        // App is detached
+        break;
+    }
+  }
+
+  void _refreshDataOnResume() {
+    // Get the IssueBoardProvider and refresh
+    final context = _navigatorKey.currentContext;
+    if (context != null) {
+      try {
+        final provider = Provider.of<IssueBoardProvider>(context, listen: false);
+        provider.fetchJobs();
+      } catch (e) {
+        if (kDebugMode) {
+          print('[OpsDeckApp] Failed to refresh on resume: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _setupNotificationService() async {
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+
+    // Handle notification taps - navigate to issue detail
+    notificationService.onNotificationTap = (repo, issueNum) {
+      if (kDebugMode) {
+        print('[OpsDeckApp] Notification tap: $repo #$issueNum');
+      }
+      _navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (context) => IssueDetailScreen(
+            repo: repo,
+            issueNum: issueNum,
+          ),
+        ),
+      );
+    };
   }
 
   Future<void> _setupFirebaseMessaging() async {
@@ -170,6 +247,7 @@ class _OpsDeckAppState extends State<OpsDeckApp> {
         ChangeNotifierProvider(create: (_) => PreviewProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: _navigatorKey,
         title: 'Ops Deck',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
