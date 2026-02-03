@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=430, initial-scale=1.0">
+  <title>Issue #47 - Screenshot Attachment (Mobile)</title>
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --color-bg-primary: #0D1117;
+      --color-bg-secondary: #161B22;
+      --color-border: #30363D;
+      --color-text-primary: #E6EDF3;
+      --color-text-secondary: #8B949E;
+      --color-accent-green: #00FF41;
+      --color-accent-blue: #58A6FF;
+      --color-accent-purple: #A371F7;
+      --color-success: #238636;
+      --color-success-text: #3FB950;
+      --color-error: #DA3633;
+      --color-error-text: #F85149;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', 'Source Code Pro', monospace;
+      background-color: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    /* App Bar */
+    .app-bar {
+      background-color: var(--color-bg-secondary);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--color-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .back-button {
+      background: none;
+      border: none;
+      color: var(--color-accent-green);
+      cursor: pointer;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .app-bar-title {
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      color: var(--color-accent-green);
+    }
+
+    /* Main Content */
+    .content {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Section Card */
+    .section-card {
+      background-color: var(--color-bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--color-border);
+      padding: 16px;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--color-text-secondary);
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    /* Input Fields */
+    .input-field {
+      width: 100%;
+      background-color: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--color-text-primary);
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: var(--color-accent-blue);
+    }
+
+    .input-field::placeholder {
+      color: var(--color-text-secondary);
+    }
+
+    textarea.input-field {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    /* Repository Dropdown */
+    .dropdown {
+      width: 100%;
+      background-color: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 12px;
+      padding-left: 40px;
+      color: var(--color-text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B949E' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    .dropdown-wrapper {
+      position: relative;
+    }
+
+    .dropdown-wrapper ion-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-accent-blue);
+      font-size: 18px;
+    }
+
+    /* Screenshot Section - NEW */
+    .screenshot-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .screenshot-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+    }
+
+    .screenshot-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .screenshot-item .remove-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(218, 54, 51, 0.9);
+      border: none;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .screenshot-item.uploading {
+      opacity: 0.7;
+    }
+
+    .screenshot-item .upload-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--color-bg-primary);
+    }
+
+    .screenshot-item .upload-progress-bar {
+      height: 100%;
+      background: var(--color-accent-green);
+      width: 60%;
+      transition: width 0.3s;
+    }
+
+    .add-screenshot-btn {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      border: 2px dashed var(--color-border);
+      background: transparent;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .add-screenshot-btn:hover {
+      border-color: var(--color-accent-blue);
+      color: var(--color-accent-blue);
+    }
+
+    .add-screenshot-btn ion-icon {
+      font-size: 24px;
+    }
+
+    .add-screenshot-btn span {
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    .screenshot-hint {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      text-align: center;
+    }
+
+    /* Action Buttons */
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-weight: bold;
+      letter-spacing: 1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+      min-height: 48px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--color-accent-purple);
+      color: var(--color-accent-purple);
+    }
+
+    .btn-primary {
+      background: var(--color-success);
+      border: none;
+      color: white;
+      font-size: 16px;
+      min-height: 56px;
+    }
+
+    /* Info Box */
+    .info-box {
+      background-color: var(--color-bg-secondary);
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      padding: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .info-box ion-icon {
+      color: var(--color-text-secondary);
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .info-box p {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Image Source Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 200;
+    }
+
+    .modal-overlay.hidden {
+      display: none;
+    }
+
+    .modal-content {
+      background: var(--color-bg-secondary);
+      border-radius: 16px 16px 0 0;
+      width: 100%;
+      max-width: 430px;
+      padding: 16px;
+      padding-bottom: 32px;
+    }
+
+    .modal-handle {
+      width: 40px;
+      height: 4px;
+      background: var(--color-border);
+      border-radius: 2px;
+      margin: 0 auto 16px;
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--color-text-secondary);
+      letter-spacing: 1px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .modal-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .modal-option {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .modal-option:hover {
+      border-color: var(--color-accent-blue);
+    }
+
+    .modal-option ion-icon {
+      font-size: 24px;
+      color: var(--color-accent-blue);
+    }
+
+    .modal-option-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .modal-option-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--color-text-primary);
+    }
+
+    .modal-option-desc {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+
+    .modal-cancel {
+      width: 100%;
+      padding: 16px;
+      background: transparent;
+      border: none;
+      color: var(--color-text-secondary);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <!-- App Bar -->
+  <div class="app-bar">
+    <button class="back-button">
+      <ion-icon name="arrow-back" size="large"></ion-icon>
+    </button>
+    <span class="app-bar-title">CREATE ISSUE</span>
+  </div>
+
+  <!-- Main Content -->
+  <div class="content">
+    <!-- Repository Selector -->
+    <div class="section-card">
+      <div class="section-label">REPOSITORY</div>
+      <div class="dropdown-wrapper">
+        <ion-icon name="folder"></ion-icon>
+        <select class="dropdown">
+          <option value="">Select a repository</option>
+          <option value="ops-deck" selected>ops-deck</option>
+          <option value="claude-ops">claude-ops</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Title Input -->
+    <div class="section-card">
+      <div class="section-label">TITLE / IDEA</div>
+      <input type="text" class="input-field" placeholder="e.g., Add dark mode to settings" value="Add Ability To Attach Screenshots on Issue Create">
+    </div>
+
+    <!-- Description Input -->
+    <div class="section-card">
+      <div class="section-label">DESCRIPTION (OPTIONAL)</div>
+      <textarea class="input-field" placeholder="Add details, then use AI to polish...">I'd like to be able to provide screenshots to the issues I am creating from ops-deck. It would allow me to provide more detail on the initial issue.</textarea>
+
+      <button class="btn btn-secondary" style="margin-top: 12px;">
+        <ion-icon name="sparkles"></ion-icon>
+        POLISH WITH AI
+      </button>
+    </div>
+
+    <!-- Screenshots Section - NEW -->
+    <div class="section-card">
+      <div class="section-label">SCREENSHOTS (OPTIONAL)</div>
+      <div class="screenshot-section">
+        <div class="screenshot-grid">
+          <!-- Existing screenshot -->
+          <div class="screenshot-item">
+            <img src="https://via.placeholder.com/120x120/161B22/8B949E?text=Screenshot" alt="Screenshot 1">
+            <button class="remove-btn">
+              <ion-icon name="close" style="font-size: 14px;"></ion-icon>
+            </button>
+          </div>
+
+          <!-- Uploading screenshot -->
+          <div class="screenshot-item uploading">
+            <img src="https://via.placeholder.com/120x120/161B22/8B949E?text=Uploading" alt="Uploading">
+            <div class="upload-progress">
+              <div class="upload-progress-bar"></div>
+            </div>
+          </div>
+
+          <!-- Add button -->
+          <button class="add-screenshot-btn">
+            <ion-icon name="add"></ion-icon>
+            <span>ADD</span>
+          </button>
+        </div>
+        <p class="screenshot-hint">Tap to add up to 5 screenshots (PNG, JPG)</p>
+      </div>
+    </div>
+
+    <!-- Create Button -->
+    <button class="btn btn-primary">
+      <ion-icon name="rocket"></ion-icon>
+      CREATE & QUEUE
+    </button>
+
+    <!-- Info Box -->
+    <div class="info-box">
+      <ion-icon name="information-circle-outline"></ion-icon>
+      <p>Issue will be created with cmd:plan-headless label and automatically picked up by the agent. Screenshots will be uploaded and linked in the issue body.</p>
+    </div>
+  </div>
+
+  <!-- Image Source Modal -->
+  <div class="modal-overlay hidden" id="imageSourceModal">
+    <div class="modal-content">
+      <div class="modal-handle"></div>
+      <div class="modal-title">ADD SCREENSHOT</div>
+
+      <div class="modal-options">
+        <div class="modal-option">
+          <ion-icon name="camera"></ion-icon>
+          <div class="modal-option-text">
+            <div class="modal-option-title">Take Photo</div>
+            <div class="modal-option-desc">Capture a new screenshot with camera</div>
+          </div>
+        </div>
+
+        <div class="modal-option">
+          <ion-icon name="images"></ion-icon>
+          <div class="modal-option-text">
+            <div class="modal-option-title">Choose from Gallery</div>
+            <div class="modal-option-desc">Select an existing image</div>
+          </div>
+        </div>
+
+        <div class="modal-option">
+          <ion-icon name="clipboard"></ion-icon>
+          <div class="modal-option-text">
+            <div class="modal-option-title">Paste from Clipboard</div>
+            <div class="modal-option-desc">Use a recently copied image</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="modal-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    // Toggle modal for demo
+    document.querySelector('.add-screenshot-btn').addEventListener('click', () => {
+      document.getElementById('imageSourceModal').classList.remove('hidden');
+    });
+
+    document.querySelector('.modal-cancel').addEventListener('click', () => {
+      document.getElementById('imageSourceModal').classList.add('hidden');
+    });
+
+    document.querySelector('.modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        document.getElementById('imageSourceModal').classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

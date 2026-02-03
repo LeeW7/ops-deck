@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/job_model.dart';
+import '../models/screenshot_attachment.dart';
 import '../services/api_service.dart';
 import '../services/firestore_service.dart';
 
@@ -422,6 +424,8 @@ class SettingsProvider with ChangeNotifier {
 class IssueProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
 
+  static const int maxScreenshots = 5;
+
   List<Map<String, String>> _repos = [];
   String? _selectedRepo;
   String _title = '';
@@ -431,6 +435,8 @@ class IssueProvider with ChangeNotifier {
   bool _isCreating = false;
   ProviderError? _error;
   String? _successMessage;
+  List<ScreenshotAttachment> _screenshots = [];
+  int _screenshotIdCounter = 0;
 
   List<Map<String, String>> get repos => _repos;
   String? get selectedRepo => _selectedRepo;
@@ -443,6 +449,19 @@ class IssueProvider with ChangeNotifier {
   String? get error => _error?.message;
   String? get successMessage => _successMessage;
   bool get canRetry => _error?.isRetryable ?? false;
+
+  // Screenshot getters
+  List<ScreenshotAttachment> get screenshots => List.unmodifiable(_screenshots);
+  bool get hasScreenshots => _screenshots.isNotEmpty;
+  bool get allScreenshotsUploaded =>
+      _screenshots.every((s) => s.isUploaded);
+  bool get hasFailedUploads =>
+      _screenshots.any((s) => s.status == UploadStatus.failed);
+  bool get hasPendingUploads =>
+      _screenshots.any((s) => s.status == UploadStatus.uploading || s.status == UploadStatus.pending);
+  int get uploadingCount =>
+      _screenshots.where((s) => s.status == UploadStatus.uploading).length;
+  bool get canAddMoreScreenshots => _screenshots.length < maxScreenshots;
 
   Future<void> fetchRepos() async {
     _isLoading = true;
@@ -512,6 +531,11 @@ class IssueProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+    if (hasPendingUploads) {
+      _error = ProviderError(message: 'Please wait for screenshots to finish uploading');
+      notifyListeners();
+      return false;
+    }
 
     _isCreating = true;
     _error = null;
@@ -519,12 +543,15 @@ class IssueProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final issueUrl = await _apiService.createIssue(_selectedRepo!, _title, _body);
+      // Build body with screenshots appended as markdown
+      final bodyWithScreenshots = _buildBodyWithScreenshots();
+      final issueUrl = await _apiService.createIssue(_selectedRepo!, _title, bodyWithScreenshots);
       _isCreating = false;
       _successMessage = 'Issue created! $issueUrl';
       // Clear form
       _title = '';
       _body = '';
+      _screenshots = [];
       notifyListeners();
       return true;
     } catch (e) {
@@ -533,6 +560,117 @@ class IssueProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Build issue body with screenshots appended as markdown images
+  String _buildBodyWithScreenshots() {
+    // Filter only successfully uploaded screenshots
+    final uploadedScreenshots = _screenshots.where((s) => s.isUploaded).toList();
+    if (uploadedScreenshots.isEmpty) {
+      return _body;
+    }
+
+    final buffer = StringBuffer(_body);
+    if (_body.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln();
+      buffer.writeln('---');
+    }
+    buffer.writeln('### Screenshots');
+    buffer.writeln();
+    for (int i = 0; i < uploadedScreenshots.length; i++) {
+      buffer.writeln('![Screenshot ${i + 1}](${uploadedScreenshots[i].uploadedUrl})');
+    }
+    return buffer.toString();
+  }
+
+  /// Add a screenshot from a local file path and start uploading
+  Future<void> addScreenshot(String localPath) async {
+    if (!canAddMoreScreenshots) {
+      _error = ProviderError(message: 'Maximum $maxScreenshots screenshots allowed');
+      notifyListeners();
+      return;
+    }
+
+    final id = 'screenshot_${_screenshotIdCounter++}';
+    final attachment = ScreenshotAttachment(
+      id: id,
+      localPath: localPath,
+      status: UploadStatus.pending,
+    );
+    _screenshots.add(attachment);
+    notifyListeners();
+
+    // Start upload immediately
+    await _uploadScreenshot(id);
+  }
+
+  /// Upload a screenshot to the server
+  Future<void> _uploadScreenshot(String id) async {
+    final index = _screenshots.indexWhere((s) => s.id == id);
+    if (index == -1) return;
+
+    // Update status to uploading
+    _screenshots[index] = _screenshots[index].copyWith(
+      status: UploadStatus.uploading,
+      uploadProgress: 0.0,
+    );
+    notifyListeners();
+
+    try {
+      final file = File(_screenshots[index].localPath);
+      if (!await file.exists()) {
+        throw Exception('Image file not found');
+      }
+
+      final url = await _apiService.uploadImage(file);
+      if (url == null) {
+        throw Exception('Upload returned no URL');
+      }
+
+      // Update with success
+      final currentIndex = _screenshots.indexWhere((s) => s.id == id);
+      if (currentIndex != -1) {
+        _screenshots[currentIndex] = _screenshots[currentIndex].copyWith(
+          status: UploadStatus.completed,
+          uploadedUrl: url,
+          uploadProgress: 1.0,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      // Update with failure
+      final currentIndex = _screenshots.indexWhere((s) => s.id == id);
+      if (currentIndex != -1) {
+        _screenshots[currentIndex] = _screenshots[currentIndex].copyWith(
+          status: UploadStatus.failed,
+          error: e.toString(),
+        );
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Retry uploading a failed screenshot
+  Future<void> retryScreenshot(String id) async {
+    final index = _screenshots.indexWhere((s) => s.id == id);
+    if (index == -1) return;
+
+    if (_screenshots[index].canRetry) {
+      await _uploadScreenshot(id);
+    }
+  }
+
+  /// Remove a screenshot from the list
+  void removeScreenshot(String id) {
+    _screenshots.removeWhere((s) => s.id == id);
+    notifyListeners();
+  }
+
+  /// Clear all screenshots
+  void clearScreenshots() {
+    _screenshots = [];
+    notifyListeners();
   }
 
   void clearError() {
@@ -545,6 +683,7 @@ class IssueProvider with ChangeNotifier {
   void clearForm() {
     _title = '';
     _body = '';
+    _screenshots = [];
     _error = null;
     _successMessage = null;
     notifyListeners();
