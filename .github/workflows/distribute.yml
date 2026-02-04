@@ -20,6 +20,14 @@ jobs:
       - name: Create google-services.json
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
 
+      - name: Setup release signing
+        run: |
+          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 --decode > android/app/ops-deck-release.keystore
+          echo "storeFile=ops-deck-release.keystore" > android/key.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -56,6 +64,7 @@ jobs:
           groups: testers
           file: build/app/outputs/flutter-apk/app-release.apk
           releaseNotes: |
+            Build: ${{ github.run_number }}
             Commit: ${{ github.sha }}
             Branch: ${{ github.ref_name }}
             Message: ${{ github.event.head_commit.message }}
