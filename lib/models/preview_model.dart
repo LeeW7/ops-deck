@@ -167,27 +167,53 @@ class PreviewDeployment {
   });
 
   factory PreviewDeployment.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to num with type check
+    num? safeNum(dynamic value) {
+      if (value is num) return value;
+      return null;
+    }
+
+    // Parse createdAt
+    DateTime createdAt;
+    final createdAtNum = safeNum(json['created_at']);
+    final createdAtStr = safeString(json['createdAt']);
+    if (createdAtNum != null) {
+      createdAt = DateTime.fromMillisecondsSinceEpoch(createdAtNum.toInt() * 1000);
+    } else if (createdAtStr != null) {
+      createdAt = DateTime.tryParse(createdAtStr) ?? DateTime.now();
+    } else {
+      createdAt = DateTime.now();
+    }
+
+    // Parse expiresAt
+    DateTime? expiresAt;
+    final expiresAtNum = safeNum(json['expires_at']);
+    final expiresAtStr = safeString(json['expiresAt']);
+    if (expiresAtNum != null) {
+      expiresAt = DateTime.fromMillisecondsSinceEpoch(expiresAtNum.toInt() * 1000);
+    } else if (expiresAtStr != null) {
+      expiresAt = DateTime.tryParse(expiresAtStr);
+    }
+
     return PreviewDeployment(
-      id: json['id'] as String? ?? '',
-      issueKey: json['issue_key'] as String? ?? json['issueKey'] as String? ?? '',
-      projectType: ProjectType.fromString(json['project_type'] as String? ?? json['projectType'] as String? ?? ''),
-      status: PreviewStatus.fromString(json['status'] as String? ?? ''),
-      previewUrl: json['preview_url'] as String? ?? json['previewUrl'] as String?,
-      downloadUrl: json['download_url'] as String? ?? json['downloadUrl'] as String?,
-      qrCodeUrl: json['qr_code_url'] as String? ?? json['qrCodeUrl'] as String?,
-      createdAt: json['created_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch((json['created_at'] as num).toInt() * 1000)
-          : json['createdAt'] != null
-              ? DateTime.parse(json['createdAt'] as String)
-              : DateTime.now(),
-      expiresAt: json['expires_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch((json['expires_at'] as num).toInt() * 1000)
-          : json['expiresAt'] != null
-              ? DateTime.parse(json['expiresAt'] as String)
-              : null,
-      errorMessage: json['error_message'] as String? ?? json['errorMessage'] as String?,
-      buildId: json['build_id'] as String? ?? json['buildId'] as String?,
-      commitSha: json['commit_sha'] as String? ?? json['commitSha'] as String?,
+      id: safeString(json['id']) ?? '',
+      issueKey: safeString(json['issue_key']) ?? safeString(json['issueKey']) ?? '',
+      projectType: ProjectType.fromString(safeString(json['project_type']) ?? safeString(json['projectType']) ?? ''),
+      status: PreviewStatus.fromString(safeString(json['status']) ?? ''),
+      previewUrl: safeString(json['preview_url']) ?? safeString(json['previewUrl']),
+      downloadUrl: safeString(json['download_url']) ?? safeString(json['downloadUrl']),
+      qrCodeUrl: safeString(json['qr_code_url']) ?? safeString(json['qrCodeUrl']),
+      createdAt: createdAt,
+      expiresAt: expiresAt,
+      errorMessage: safeString(json['error_message']) ?? safeString(json['errorMessage']),
+      buildId: safeString(json['build_id']) ?? safeString(json['buildId']),
+      commitSha: safeString(json['commit_sha']) ?? safeString(json['commitSha']),
     );
   }
 
@@ -287,13 +313,26 @@ class TestFailure {
   });
 
   factory TestFailure.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to int with type check
+    int? safeInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return null;
+    }
+
     return TestFailure(
-      testName: json['test_name'] as String? ?? json['testName'] as String? ?? 'Unknown test',
-      suiteName: json['suite_name'] as String? ?? json['suiteName'] as String?,
-      message: json['message'] as String? ?? '',
-      stackTrace: json['stack_trace'] as String? ?? json['stackTrace'] as String?,
-      filePath: json['file_path'] as String? ?? json['filePath'] as String?,
-      lineNumber: json['line_number'] as int? ?? json['lineNumber'] as int?,
+      testName: safeString(json['test_name']) ?? safeString(json['testName']) ?? 'Unknown test',
+      suiteName: safeString(json['suite_name']) ?? safeString(json['suiteName']),
+      message: safeString(json['message']) ?? '',
+      stackTrace: safeString(json['stack_trace']) ?? safeString(json['stackTrace']),
+      filePath: safeString(json['file_path']) ?? safeString(json['filePath']),
+      lineNumber: safeInt(json['line_number']) ?? safeInt(json['lineNumber']),
     );
   }
 
@@ -346,24 +385,57 @@ class TestResult {
   });
 
   factory TestResult.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to int with type check
+    int? safeInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    // Helper to safely cast to num with type check
+    num? safeNum(dynamic value) {
+      if (value is num) return value;
+      return null;
+    }
+
+    // Parse failures safely
+    List<TestFailure> failures = [];
+    final failuresData = json['failures'];
+    if (failuresData is List) {
+      failures = failuresData
+          .whereType<Map<String, dynamic>>()
+          .map((f) => TestFailure.fromJson(f))
+          .toList();
+    }
+
+    // Parse timestamp
+    DateTime timestamp;
+    final ts = json['timestamp'];
+    if (ts is num) {
+      timestamp = DateTime.fromMillisecondsSinceEpoch(ts.toInt() * 1000);
+    } else if (ts is String) {
+      timestamp = DateTime.tryParse(ts) ?? DateTime.now();
+    } else {
+      timestamp = DateTime.now();
+    }
+
     return TestResult(
-      id: json['id'] as String? ?? '',
-      testSuite: json['test_suite'] as String? ?? json['testSuite'] as String? ?? 'Tests',
-      passed: json['passed'] as int? ?? 0,
-      failed: json['failed'] as int? ?? 0,
-      skipped: json['skipped'] as int? ?? 0,
-      duration: (json['duration'] as num?)?.toDouble() ?? 0.0,
-      coveragePercent: json['coverage_percent'] as String? ?? json['coveragePercent'] as String? ?? json['coverage'] as String?,
-      failures: (json['failures'] as List<dynamic>?)
-              ?.map((f) => TestFailure.fromJson(f as Map<String, dynamic>))
-              .toList() ??
-          [],
-      timestamp: json['timestamp'] != null
-          ? (json['timestamp'] is num
-              ? DateTime.fromMillisecondsSinceEpoch((json['timestamp'] as num).toInt() * 1000)
-              : DateTime.parse(json['timestamp'] as String))
-          : DateTime.now(),
-      runUrl: json['run_url'] as String? ?? json['runUrl'] as String?,
+      id: safeString(json['id']) ?? '',
+      testSuite: safeString(json['test_suite']) ?? safeString(json['testSuite']) ?? 'Tests',
+      passed: safeInt(json['passed']) ?? 0,
+      failed: safeInt(json['failed']) ?? 0,
+      skipped: safeInt(json['skipped']) ?? 0,
+      duration: safeNum(json['duration'])?.toDouble() ?? 0.0,
+      coveragePercent: safeString(json['coverage_percent']) ?? safeString(json['coveragePercent']) ?? safeString(json['coverage']),
+      failures: failures,
+      timestamp: timestamp,
+      runUrl: safeString(json['run_url']) ?? safeString(json['runUrl']),
     );
   }
 
@@ -425,20 +497,43 @@ class ValidationState {
   });
 
   factory ValidationState.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to num with type check
+    num? safeNum(dynamic value) {
+      if (value is num) return value;
+      return null;
+    }
+
+    // Parse test results safely
+    List<TestResult> testResults = [];
+    final testResultsData = json['test_results'] ?? json['testResults'];
+    if (testResultsData is List) {
+      testResults = testResultsData
+          .whereType<Map<String, dynamic>>()
+          .map((t) => TestResult.fromJson(t))
+          .toList();
+    }
+
+    // Parse lastUpdated
+    DateTime? lastUpdated;
+    final lastUpdatedNum = safeNum(json['last_updated']) ?? safeNum(json['lastUpdated']);
+    if (lastUpdatedNum != null) {
+      lastUpdated = DateTime.fromMillisecondsSinceEpoch(lastUpdatedNum.toInt() * 1000);
+    }
+
     return ValidationState(
-      issueKey: json['issue_key'] as String? ?? json['issueKey'] as String? ?? '',
-      preview: json['preview'] != null
+      issueKey: safeString(json['issue_key']) ?? safeString(json['issueKey']) ?? '',
+      preview: json['preview'] is Map<String, dynamic>
           ? PreviewDeployment.fromJson(json['preview'] as Map<String, dynamic>)
           : null,
-      testResults: (json['test_results'] as List<dynamic>? ?? json['testResults'] as List<dynamic>?)
-              ?.map((t) => TestResult.fromJson(t as Map<String, dynamic>))
-              .toList() ??
-          [],
-      phase: ValidationPhase.fromString(json['phase'] as String? ?? ''),
-      lastUpdated: json['last_updated'] != null || json['lastUpdated'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(
-              ((json['last_updated'] ?? json['lastUpdated']) as num).toInt() * 1000)
-          : null,
+      testResults: testResults,
+      phase: ValidationPhase.fromString(safeString(json['phase']) ?? ''),
+      lastUpdated: lastUpdated,
     );
   }
 
