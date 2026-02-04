@@ -213,21 +213,34 @@ class Job {
       startTime = 0;
     }
 
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to int with type check
+    int? safeInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return null;
+    }
+
     return Job(
       issueId: issueId,
-      status: json['status'] as String? ?? 'unknown',
-      command: json['command'] as String? ?? 'unknown',
+      status: safeString(json['status']) ?? 'unknown',
+      command: safeString(json['command']) ?? 'unknown',
       startTime: startTime,
-      completedTime: json['completed_time'] as int?,
-      error: json['error'] as String?,
-      repo: json['repo'] as String? ?? 'unknown',
-      repoSlug: json['repo_slug'] as String? ?? '',
-      issueTitle: json['issue_title'] as String? ?? '',
-      issueNum: json['issue_num'] as int? ?? 0,
-      logPath: json['log_path'] as String? ?? '',
-      localPath: json['local_path'] as String? ?? '',
-      fullCommand: json['full_command'] as String? ?? '',
-      cost: json['cost'] != null ? JobCost.fromMap(json['cost'] as Map<String, dynamic>) : null,
+      completedTime: safeInt(json['completed_time']),
+      error: safeString(json['error']),
+      repo: safeString(json['repo']) ?? 'unknown',
+      repoSlug: safeString(json['repo_slug']) ?? '',
+      issueTitle: safeString(json['issue_title']) ?? '',
+      issueNum: safeInt(json['issue_num']) ?? 0,
+      logPath: safeString(json['log_path']) ?? '',
+      localPath: safeString(json['local_path']) ?? '',
+      fullCommand: safeString(json['full_command']) ?? '',
+      cost: json['cost'] is Map<String, dynamic> ? JobCost.fromMap(json['cost'] as Map<String, dynamic>) : null,
       createdAt: _parseDateTime(json['created_at']),
       updatedAt: _parseDateTime(json['updated_at']),
       decisions: _parseDecisions(json['decisions']),
@@ -247,21 +260,34 @@ class Job {
   /// Create from Firestore document
   factory Job.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
+
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to num with type check
+    num? safeNum(dynamic value) {
+      if (value is num) return value;
+      return null;
+    }
+
     return Job(
       issueId: doc.id,
-      status: data['status'] as String? ?? 'unknown',
-      command: data['command'] as String? ?? 'unknown',
-      startTime: (data['start_time'] as num?)?.toInt() ?? 0,
-      completedTime: (data['completed_time'] as num?)?.toInt(),
-      error: data['error'] as String?,
-      repo: data['repo'] as String? ?? 'unknown',
-      repoSlug: data['repo_slug'] as String? ?? '',
-      issueTitle: data['issue_title'] as String? ?? '',
-      issueNum: (data['issue_num'] as num?)?.toInt() ?? 0,
-      logPath: data['log_path'] as String? ?? '',
-      localPath: data['local_path'] as String? ?? '',
-      fullCommand: data['full_command'] as String? ?? '',
-      cost: data['cost'] != null ? JobCost.fromMap(data['cost'] as Map<String, dynamic>) : null,
+      status: safeString(data['status']) ?? 'unknown',
+      command: safeString(data['command']) ?? 'unknown',
+      startTime: safeNum(data['start_time'])?.toInt() ?? 0,
+      completedTime: safeNum(data['completed_time'])?.toInt(),
+      error: safeString(data['error']),
+      repo: safeString(data['repo']) ?? 'unknown',
+      repoSlug: safeString(data['repo_slug']) ?? '',
+      issueTitle: safeString(data['issue_title']) ?? '',
+      issueNum: safeNum(data['issue_num'])?.toInt() ?? 0,
+      logPath: safeString(data['log_path']) ?? '',
+      localPath: safeString(data['local_path']) ?? '',
+      fullCommand: safeString(data['full_command']) ?? '',
+      cost: data['cost'] is Map<String, dynamic> ? JobCost.fromMap(data['cost'] as Map<String, dynamic>) : null,
       createdAt: _parseFirestoreTimestamp(data['created_at']),
       updatedAt: _parseFirestoreTimestamp(data['updated_at']),
       decisions: _parseDecisions(data['decisions']),

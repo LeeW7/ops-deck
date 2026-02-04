@@ -288,11 +288,20 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final List<dynamic> data = _parseJson(response) as List<dynamic>;
-      return data.map((repo) => {
-        'name': repo['name'] as String,
-        'full_name': repo['full_name'] as String,
-        'path': repo['path'] as String,
-      }).toList();
+      return data.map((repo) {
+        if (repo is! Map<String, dynamic>) {
+          return <String, String>{
+            'name': '',
+            'full_name': '',
+            'path': '',
+          };
+        }
+        return <String, String>{
+          'name': repo['name'] is String ? repo['name'] as String : '',
+          'full_name': repo['full_name'] is String ? repo['full_name'] as String : '',
+          'path': repo['path'] is String ? repo['path'] as String : '',
+        };
+      }).where((repo) => repo['name']!.isNotEmpty).toList();
     } else {
       throw _handleErrorResponse(response, 'fetch repos');
     }
@@ -779,15 +788,28 @@ class HiddenIssueData {
   });
 
   factory HiddenIssueData.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to int with type check
+    int? safeInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return null;
+    }
+
     return HiddenIssueData(
-      issueKey: json['issue_key'] as String,
-      repo: json['repo'] as String,
-      issueNum: json['issue_num'] as int,
-      issueTitle: json['issue_title'] as String? ?? '',
-      hiddenAt: json['hidden_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['hidden_at'] as int)
+      issueKey: safeString(json['issue_key']) ?? '',
+      repo: safeString(json['repo']) ?? '',
+      issueNum: safeInt(json['issue_num']) ?? 0,
+      issueTitle: safeString(json['issue_title']) ?? '',
+      hiddenAt: safeInt(json['hidden_at']) != null
+          ? DateTime.fromMillisecondsSinceEpoch(safeInt(json['hidden_at'])!)
           : DateTime.now(),
-      reason: json['reason'] as String? ?? 'user',
+      reason: safeString(json['reason']) ?? 'user',
     );
   }
 }

@@ -361,26 +361,36 @@ class StreamMessage {
   factory StreamMessage.fromJson(Map<String, dynamic> json) {
     StreamData? data;
 
-    if (json['data'] != null) {
+    if (json['data'] != null && json['data'] is Map<String, dynamic>) {
       final dataJson = json['data'] as Map<String, dynamic>;
-      final dataType = dataJson['type'] as String?;
+      final dataType = dataJson['type'] is String ? dataJson['type'] as String : null;
       final content = dataJson['content'];
 
       switch (dataType) {
         case 'text':
-          data = StreamData.text(content as String);
+          if (content is String) {
+            data = StreamData.text(content);
+          }
           break;
         case 'status':
-          data = StreamData.status(content as String);
+          if (content is String) {
+            data = StreamData.status(content);
+          }
           break;
         case 'tool':
-          data = StreamData.tool(ToolUseData.fromJson(content as Map<String, dynamic>));
+          if (content is Map<String, dynamic>) {
+            data = StreamData.tool(ToolUseData.fromJson(content));
+          }
           break;
         case 'result':
-          data = StreamData.result(ResultData.fromJson(content as Map<String, dynamic>));
+          if (content is Map<String, dynamic>) {
+            data = StreamData.result(ResultData.fromJson(content));
+          }
           break;
         case 'error':
-          data = StreamData.error(content as String);
+          if (content is String) {
+            data = StreamData.error(content);
+          }
           break;
       }
     }
