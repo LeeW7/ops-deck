@@ -600,17 +600,24 @@ class IssueBoardProvider with ChangeNotifier {
 
       if (_issues.containsKey(issueKey)) {
         final existingIssue = _issues[issueKey]!;
+
+        // Parse completed phases safely
+        List<String> completedPhases = [];
+        final phasesData = workflow['completed_phases'];
+        if (phasesData is List) {
+          completedPhases = phasesData.map((e) => e.toString()).toList();
+        }
+
         final updatedIssue = existingIssue.copyWith(
-          currentPhase: WorkflowPhase.fromString(workflow['current_phase'] ?? 'new'),
-          prUrl: workflow['pr_url'] as String?,
-          canRevise: workflow['can_revise'] as bool? ?? false,
-          canMerge: workflow['can_merge'] as bool? ?? false,
-          issueClosed: workflow['issue_closed'] as bool? ?? false,
-          revisionCount: workflow['revision_count'] as int? ?? 0,
-          completedPhases: (workflow['completed_phases'] as List<dynamic>?)
-                  ?.map((e) => e.toString())
-                  .toList() ??
-              [],
+          currentPhase: WorkflowPhase.fromString(
+            workflow['current_phase'] is String ? workflow['current_phase'] as String : 'new',
+          ),
+          prUrl: workflow['pr_url'] is String ? workflow['pr_url'] as String : null,
+          canRevise: workflow['can_revise'] is bool ? workflow['can_revise'] as bool : false,
+          canMerge: workflow['can_merge'] is bool ? workflow['can_merge'] as bool : false,
+          issueClosed: workflow['issue_closed'] is bool ? workflow['issue_closed'] as bool : false,
+          revisionCount: workflow['revision_count'] is int ? workflow['revision_count'] as int : 0,
+          completedPhases: completedPhases,
         );
         _issues[issueKey] = updatedIssue;
         notifyListeners();

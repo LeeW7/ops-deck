@@ -1012,9 +1012,11 @@ class JobEvent {
     }
 
     return JobEvent(
-      type: JobEventType.fromString(json['type'] as String? ?? ''),
+      type: JobEventType.fromString(json['type'] is String ? json['type'] as String : ''),
       timestamp: timestamp,
-      job: JobEventData.fromJson(json['job'] as Map<String, dynamic>),
+      job: json['job'] is Map<String, dynamic>
+          ? JobEventData.fromJson(json['job'] as Map<String, dynamic>)
+          : JobEventData(id: '', repo: '', issueNum: 0, issueTitle: '', command: '', status: ''),
     );
   }
 }
@@ -1074,24 +1076,43 @@ class JobEventData {
   });
 
   factory JobEventData.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to int with type check
+    int? safeInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    // Parse test results safely
+    List<TestResult>? testResults;
+    final testResultsData = json['test_results'] ?? json['testResults'];
+    if (testResultsData is List) {
+      testResults = testResultsData
+          .whereType<Map<String, dynamic>>()
+          .map((t) => TestResult.fromJson(t))
+          .toList();
+    }
+
     return JobEventData(
-      id: json['id'] as String? ?? '',
-      repo: json['repo'] as String? ?? '',
-      issueNum: json['issueNum'] as int? ?? json['issue_num'] as int? ?? 0,
-      issueTitle: json['issueTitle'] as String? ?? json['issue_title'] as String? ?? '',
-      command: json['command'] as String? ?? '',
-      status: json['status'] as String? ?? '',
-      cost: json['cost'] != null
+      id: safeString(json['id']) ?? '',
+      repo: safeString(json['repo']) ?? '',
+      issueNum: safeInt(json['issueNum']) ?? safeInt(json['issue_num']) ?? 0,
+      issueTitle: safeString(json['issueTitle']) ?? safeString(json['issue_title']) ?? '',
+      command: safeString(json['command']) ?? '',
+      status: safeString(json['status']) ?? '',
+      cost: json['cost'] is Map<String, dynamic>
           ? JobCostData.fromJson(json['cost'] as Map<String, dynamic>)
           : null,
-      preview: json['preview'] != null
+      preview: json['preview'] is Map<String, dynamic>
           ? PreviewDeployment.fromJson(json['preview'] as Map<String, dynamic>)
           : null,
-      testResults: json['test_results'] != null || json['testResults'] != null
-          ? ((json['test_results'] ?? json['testResults']) as List<dynamic>)
-              .map((t) => TestResult.fromJson(t as Map<String, dynamic>))
-              .toList()
-          : null,
+      testResults: testResults,
     );
   }
 }

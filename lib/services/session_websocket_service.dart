@@ -75,9 +75,9 @@ class SessionStreamMessage {
     }
 
     return SessionStreamMessage(
-      type: SessionMessageType.fromString(json['type'] as String? ?? ''),
-      content: json['content'] as String?,
-      data: json['data'] as Map<String, dynamic>?,
+      type: SessionMessageType.fromString(json['type'] is String ? json['type'] as String : ''),
+      content: json['content'] is String ? json['content'] as String : null,
+      data: json['data'] is Map<String, dynamic> ? json['data'] as Map<String, dynamic> : null,
       timestamp: timestamp,
     );
   }
@@ -86,10 +86,16 @@ class SessionStreamMessage {
   bool get hasToolInfo => type == SessionMessageType.toolUse && data != null;
 
   /// Get tool name if this is a tool use message
-  String? get toolName => data?['toolName'] as String?;
+  String? get toolName {
+    final value = data?['toolName'];
+    return value is String ? value : null;
+  }
 
   /// Get tool input if this is a tool use message
-  String? get toolInput => data?['input'] as String?;
+  String? get toolInput {
+    final value = data?['input'];
+    return value is String ? value : null;
+  }
 
   /// Check if this message has cost information
   bool get hasCostInfo => type == SessionMessageType.result && data != null;
