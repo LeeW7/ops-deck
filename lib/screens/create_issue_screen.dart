@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/job_provider.dart';
+import '../widgets/screenshot_picker.dart';
 
 class CreateIssueScreen extends StatefulWidget {
   const CreateIssueScreen({super.key});
@@ -368,13 +369,49 @@ class _CreateIssueScreenState extends State<CreateIssueScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 16),
+
+                // Screenshots section
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF161B22),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF30363D)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'SCREENSHOTS (OPTIONAL)',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF8B949E),
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ScreenshotPicker(
+                        screenshots: provider.screenshots,
+                        maxScreenshots: IssueProvider.maxScreenshots,
+                        canAddMore: provider.canAddMoreScreenshots,
+                        onAdd: (path) => provider.addScreenshot(path),
+                        onRemove: (id) => provider.removeScreenshot(id),
+                        onRetry: (id) => provider.retryScreenshot(id),
+                      ),
+                    ],
+                  ),
+                ),
+
                 const SizedBox(height: 24),
 
                 // Create button
                 SizedBox(
                   height: 56,
                   child: ElevatedButton.icon(
-                    onPressed: provider.isCreating
+                    onPressed: provider.isCreating || provider.hasPendingUploads
                         ? null
                         : () async {
                             // Save values BEFORE any provider calls (notifyListeners overwrites controllers)
@@ -435,7 +472,7 @@ class _CreateIssueScreenState extends State<CreateIssueScreen> {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Issue will be created with cmd:plan-headless label and automatically picked up by the agent.',
+                          'Issue will be created with cmd:plan-headless label and automatically picked up by the agent. Screenshots will be uploaded and linked in the issue body.',
                           style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 12,

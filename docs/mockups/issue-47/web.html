@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1440, initial-scale=1.0">
+  <title>Issue #47 - Screenshot Attachment (Desktop)</title>
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --color-bg-primary: #0D1117;
+      --color-bg-secondary: #161B22;
+      --color-border: #30363D;
+      --color-text-primary: #E6EDF3;
+      --color-text-secondary: #8B949E;
+      --color-accent-green: #00FF41;
+      --color-accent-blue: #58A6FF;
+      --color-accent-purple: #A371F7;
+      --color-success: #238636;
+      --color-success-text: #3FB950;
+      --color-error: #DA3633;
+      --color-error-text: #F85149;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', 'Source Code Pro', monospace;
+      background-color: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      width: 1440px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    /* App Bar */
+    .app-bar {
+      background-color: var(--color-bg-secondary);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--color-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .back-button {
+      background: none;
+      border: none;
+      color: var(--color-accent-green);
+      cursor: pointer;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .app-bar-title {
+      font-size: 18px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      color: var(--color-accent-green);
+    }
+
+    /* Main Container - Two Column Layout */
+    .main-container {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 32px;
+      padding: 32px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Left Column - Form */
+    .form-column {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Right Column - Preview */
+    .preview-column {
+      position: sticky;
+      top: 100px;
+      height: fit-content;
+    }
+
+    /* Section Card */
+    .section-card {
+      background-color: var(--color-bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--color-border);
+      padding: 20px;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--color-text-secondary);
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    /* Input Fields */
+    .input-field {
+      width: 100%;
+      background-color: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 14px;
+      color: var(--color-text-primary);
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: var(--color-accent-blue);
+    }
+
+    .input-field::placeholder {
+      color: var(--color-text-secondary);
+    }
+
+    textarea.input-field {
+      resize: vertical;
+      min-height: 160px;
+    }
+
+    /* Repository Dropdown */
+    .dropdown {
+      width: 100%;
+      background-color: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 14px;
+      padding-left: 44px;
+      color: var(--color-text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B949E' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      cursor: pointer;
+    }
+
+    .dropdown-wrapper {
+      position: relative;
+    }
+
+    .dropdown-wrapper ion-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-accent-blue);
+      font-size: 18px;
+    }
+
+    /* Screenshot Section - NEW */
+    .screenshot-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+    }
+
+    .screenshot-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .screenshot-item:hover {
+      border-color: var(--color-accent-blue);
+    }
+
+    .screenshot-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .screenshot-item .remove-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(218, 54, 51, 0.9);
+      border: none;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .screenshot-item:hover .remove-btn {
+      opacity: 1;
+    }
+
+    .screenshot-item.uploading {
+      opacity: 0.7;
+    }
+
+    .screenshot-item .upload-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--color-bg-primary);
+    }
+
+    .screenshot-item .upload-progress-bar {
+      height: 100%;
+      background: var(--color-accent-green);
+      width: 60%;
+      transition: width 0.3s;
+    }
+
+    .add-screenshot-btn {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      border: 2px dashed var(--color-border);
+      background: transparent;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+    }
+
+    .add-screenshot-btn:hover {
+      border-color: var(--color-accent-blue);
+      color: var(--color-accent-blue);
+      background-color: rgba(88, 166, 255, 0.05);
+    }
+
+    .add-screenshot-btn ion-icon {
+      font-size: 28px;
+    }
+
+    .add-screenshot-btn span {
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    .screenshot-hint {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Drag and Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--color-border);
+      border-radius: 12px;
+      padding: 32px;
+      text-align: center;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    .drop-zone.drag-over {
+      border-color: var(--color-accent-blue);
+      background-color: rgba(88, 166, 255, 0.05);
+    }
+
+    .drop-zone-icon {
+      font-size: 48px;
+      color: var(--color-text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .drop-zone-text {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .drop-zone-hint {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      opacity: 0.7;
+    }
+
+    .drop-zone-link {
+      color: var(--color-accent-blue);
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    /* Action Buttons */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-weight: bold;
+      letter-spacing: 1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s, transform 0.1s;
+      min-height: 52px;
+    }
+
+    .btn:hover {
+      opacity: 0.9;
+    }
+
+    .btn:active {
+      transform: scale(0.99);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--color-accent-purple);
+      color: var(--color-accent-purple);
+    }
+
+    .btn-primary {
+      background: var(--color-success);
+      border: none;
+      color: white;
+      font-size: 16px;
+      min-height: 56px;
+    }
+
+    /* Preview Card */
+    .preview-card {
+      background-color: var(--color-bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--color-border);
+      overflow: hidden;
+    }
+
+    .preview-header {
+      background: var(--color-bg-primary);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .preview-header-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--color-text-secondary);
+      letter-spacing: 1px;
+    }
+
+    .preview-content {
+      padding: 20px;
+    }
+
+    .preview-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--color-text-primary);
+      margin-bottom: 16px;
+    }
+
+    .preview-body {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .preview-images {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .preview-image {
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--color-border);
+    }
+
+    .preview-label {
+      display: inline-block;
+      background: rgba(163, 113, 247, 0.2);
+      border: 1px solid var(--color-accent-purple);
+      border-radius: 16px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: var(--color-accent-purple);
+      margin-top: 16px;
+    }
+
+    /* Info Box */
+    .info-box {
+      background-color: var(--color-bg-secondary);
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      padding: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .info-box ion-icon {
+      color: var(--color-text-secondary);
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .info-box p {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Button Group */
+    .button-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .button-group .btn {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <!-- App Bar -->
+  <div class="app-bar">
+    <button class="back-button">
+      <ion-icon name="arrow-back" size="large"></ion-icon>
+    </button>
+    <span class="app-bar-title">CREATE ISSUE</span>
+  </div>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Left Column - Form -->
+    <div class="form-column">
+      <!-- Repository Selector -->
+      <div class="section-card">
+        <div class="section-label">REPOSITORY</div>
+        <div class="dropdown-wrapper">
+          <ion-icon name="folder"></ion-icon>
+          <select class="dropdown">
+            <option value="">Select a repository</option>
+            <option value="ops-deck" selected>ops-deck</option>
+            <option value="claude-ops">claude-ops</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Title Input -->
+      <div class="section-card">
+        <div class="section-label">TITLE / IDEA</div>
+        <input type="text" class="input-field" placeholder="e.g., Add dark mode to settings" value="Add Ability To Attach Screenshots on Issue Create">
+      </div>
+
+      <!-- Description Input -->
+      <div class="section-card">
+        <div class="section-label">DESCRIPTION (OPTIONAL)</div>
+        <textarea class="input-field" placeholder="Add details, then use AI to polish...">I'd like to be able to provide screenshots to the issues I am creating from ops-deck. It would allow me to provide more detail on the initial issue.</textarea>
+
+        <button class="btn btn-secondary" style="margin-top: 16px;">
+          <ion-icon name="sparkles"></ion-icon>
+          POLISH WITH AI
+        </button>
+      </div>
+
+      <!-- Screenshots Section - NEW -->
+      <div class="section-card">
+        <div class="section-label">SCREENSHOTS (OPTIONAL)</div>
+        <div class="screenshot-section">
+          <!-- Drag and Drop Zone -->
+          <div class="drop-zone" id="dropZone">
+            <ion-icon name="cloud-upload-outline" class="drop-zone-icon"></ion-icon>
+            <div class="drop-zone-text">
+              Drag & drop images here or <span class="drop-zone-link">browse files</span>
+            </div>
+            <div class="drop-zone-hint">PNG, JPG, GIF up to 10MB each (max 5 images)</div>
+          </div>
+
+          <!-- Screenshot Grid -->
+          <div class="screenshot-grid">
+            <!-- Existing screenshot -->
+            <div class="screenshot-item">
+              <img src="https://via.placeholder.com/100x100/161B22/8B949E?text=1" alt="Screenshot 1">
+              <button class="remove-btn">
+                <ion-icon name="close" style="font-size: 14px;"></ion-icon>
+              </button>
+            </div>
+
+            <!-- Another screenshot -->
+            <div class="screenshot-item">
+              <img src="https://via.placeholder.com/100x100/161B22/8B949E?text=2" alt="Screenshot 2">
+              <button class="remove-btn">
+                <ion-icon name="close" style="font-size: 14px;"></ion-icon>
+              </button>
+            </div>
+
+            <!-- Uploading screenshot -->
+            <div class="screenshot-item uploading">
+              <img src="https://via.placeholder.com/100x100/161B22/8B949E?text=..." alt="Uploading">
+              <div class="upload-progress">
+                <div class="upload-progress-bar"></div>
+              </div>
+            </div>
+
+            <!-- Add button -->
+            <button class="add-screenshot-btn">
+              <ion-icon name="add"></ion-icon>
+              <span>ADD</span>
+            </button>
+          </div>
+
+          <p class="screenshot-hint">Click images to preview. Drag to reorder.</p>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="button-group">
+        <button class="btn btn-secondary">
+          <ion-icon name="save-outline"></ion-icon>
+          SAVE DRAFT
+        </button>
+        <button class="btn btn-primary">
+          <ion-icon name="rocket"></ion-icon>
+          CREATE & QUEUE
+        </button>
+      </div>
+
+      <!-- Info Box -->
+      <div class="info-box">
+        <ion-icon name="information-circle-outline"></ion-icon>
+        <p>Issue will be created with cmd:plan-headless label and automatically picked up by the agent. Screenshots will be uploaded to a GitHub Gist and linked in the issue body as markdown images.</p>
+      </div>
+    </div>
+
+    <!-- Right Column - Preview -->
+    <div class="preview-column">
+      <div class="preview-card">
+        <div class="preview-header">
+          <div class="preview-header-title">ISSUE PREVIEW</div>
+        </div>
+        <div class="preview-content">
+          <div class="preview-title">Add Ability To Attach Screenshots on Issue Create</div>
+          <div class="preview-body">
+            I'd like to be able to provide screenshots to the issues I am creating from ops-deck. It would allow me to provide more detail on the initial issue.
+          </div>
+          <div class="preview-images">
+            <img src="https://via.placeholder.com/80x80/161B22/8B949E?text=1" alt="Preview 1" class="preview-image">
+            <img src="https://via.placeholder.com/80x80/161B22/8B949E?text=2" alt="Preview 2" class="preview-image">
+          </div>
+          <div class="preview-label">cmd:plan-headless</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Drag and drop demo
+    const dropZone = document.getElementById('dropZone');
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      alert('Image dropped! (Demo mode)');
+    });
+  </script>
+</body>
+</html>
