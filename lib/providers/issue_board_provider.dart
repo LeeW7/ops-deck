@@ -268,12 +268,38 @@ class IssueBoardProvider with ChangeNotifier {
         notifyListeners();
         break;
       case JobEventType.jobCompleted:
+        // Ensure status is 'completed' even if not in event payload
+        final completedJob = JobEventData(
+          id: job.id,
+          repo: job.repo,
+          issueNum: job.issueNum,
+          issueTitle: job.issueTitle,
+          command: job.command,
+          status: job.status.isEmpty ? 'completed' : job.status,
+          cost: job.cost,
+          preview: job.preview,
+          testResults: job.testResults,
+        );
+        _updateIssueFromEvent(issueKey, completedJob);
+        _cache.updateJobStatus(completedJob.id, completedJob.status);
+        _maybeShowNotification(event);
+        notifyListeners();
+        break;
       case JobEventType.jobFailed:
-        // Update or create the issue with new job status
-        _updateIssueFromEvent(issueKey, job);
-        // Update cache with new status
-        _cache.updateJobStatus(job.id, job.status);
-        // Show notification if app is in background
+        // Ensure status is 'failed' even if not in event payload
+        final failedJob = JobEventData(
+          id: job.id,
+          repo: job.repo,
+          issueNum: job.issueNum,
+          issueTitle: job.issueTitle,
+          command: job.command,
+          status: job.status.isEmpty ? 'failed' : job.status,
+          cost: job.cost,
+          preview: job.preview,
+          testResults: job.testResults,
+        );
+        _updateIssueFromEvent(issueKey, failedJob);
+        _cache.updateJobStatus(failedJob.id, failedJob.status);
         _maybeShowNotification(event);
         notifyListeners();
         break;
@@ -502,11 +528,17 @@ class IssueBoardProvider with ChangeNotifier {
       if (oldIssue.status != entry.value.status) return true;
       if (oldIssue.currentPhase != entry.value.currentPhase) return true;
       if (oldIssue.jobs.length != entry.value.jobs.length) return true;
-      // Check if any job has new decisions
-      for (int i = 0; i < oldIssue.jobs.length && i < entry.value.jobs.length; i++) {
-        if (oldIssue.jobs[i].decisions.length != entry.value.jobs[i].decisions.length) {
-          return true;
-        }
+      // Check completedPhases
+      if (oldIssue.completedPhases.length != entry.value.completedPhases.length) {
+        return true;
+      }
+      // Check if any job status or decisions changed (match by job ID, not index)
+      final oldJobsById = {for (var j in oldIssue.jobs) j.issueId: j};
+      for (final newJob in entry.value.jobs) {
+        final oldJob = oldJobsById[newJob.issueId];
+        if (oldJob == null) return true; // New job added
+        if (oldJob.status != newJob.status) return true;
+        if (oldJob.decisions.length != newJob.decisions.length) return true;
       }
     }
     return false;
