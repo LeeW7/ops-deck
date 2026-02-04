@@ -187,11 +187,12 @@ class ApiService {
       final data = json.decode(response.body);
 
       // Check common error message fields in order of specificity
-      serverMessage = data['reason'] as String? ??
-          data['error'] as String? ??
-          data['message'] as String? ??
-          data['detail'] as String? ??
-          data['error_description'] as String? ??
+      // Use type checks to avoid crashes when server returns unexpected types
+      serverMessage = (data['reason'] is String ? data['reason'] as String : null) ??
+          (data['error'] is String ? data['error'] as String : null) ??
+          (data['message'] is String ? data['message'] as String : null) ??
+          (data['detail'] is String ? data['detail'] as String : null) ??
+          (data['error_description'] is String ? data['error_description'] as String : null) ??
           (data['details'] is String ? data['details'] as String : null) ??
           (data['errors'] is List && (data['errors'] as List).isNotEmpty
               ? (data['errors'] as List).map((e) => e.toString()).join('; ')
