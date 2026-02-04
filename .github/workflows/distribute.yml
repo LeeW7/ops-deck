@@ -21,12 +21,19 @@ jobs:
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
 
       - name: Setup release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 -d > android/app/ops-deck-release.keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/ops-deck-release.keystore
+          echo "Keystore size: $(wc -c < android/app/ops-deck-release.keystore) bytes"
           echo "storeFile=ops-deck-release.keystore" > android/key.properties
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "storePassword=$KEYSTORE_PASSWORD" >> android/key.properties
+          echo "keyAlias=$KEY_ALIAS" >> android/key.properties
+          echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
+          keytool -list -keystore android/app/ops-deck-release.keystore -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" || echo "Keystore verification failed"
 
       - name: Setup Java
         uses: actions/setup-java@v5
