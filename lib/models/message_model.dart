@@ -58,15 +58,27 @@ class QuickMessage {
   });
 
   factory QuickMessage.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to num with type check
+    num? safeNum(dynamic value) {
+      if (value is num) return value;
+      return null;
+    }
+
     return QuickMessage(
-      id: json['id'] as String? ?? '',
-      sessionId: json['session_id'] as String? ?? '',
-      role: MessageRole.fromString(json['role'] as String? ?? 'user'),
-      content: json['content'] as String? ?? '',
+      id: safeString(json['id']) ?? '',
+      sessionId: safeString(json['session_id']) ?? '',
+      role: MessageRole.fromString(safeString(json['role']) ?? 'user'),
+      content: safeString(json['content']) ?? '',
       timestamp: _parseDateTime(json['timestamp']),
-      costUsd: (json['cost_usd'] as num?)?.toDouble(),
-      toolName: json['tool_name'] as String?,
-      toolInput: json['tool_input'] as String?,
+      costUsd: safeNum(json['cost_usd'])?.toDouble(),
+      toolName: safeString(json['tool_name']),
+      toolInput: safeString(json['tool_input']),
     );
   }
 

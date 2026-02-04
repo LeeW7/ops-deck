@@ -21,14 +21,25 @@ class JobDecision {
   });
 
   factory JobDecision.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Parse alternatives safely
+    List<String>? alternatives;
+    final alternativesData = json['alternatives'];
+    if (alternativesData is List) {
+      alternatives = alternativesData.map((e) => e.toString()).toList();
+    }
+
     return JobDecision(
-      id: json['id'] as String? ?? '',
-      action: json['action'] as String? ?? '',
-      reasoning: json['reasoning'] as String? ?? '',
-      alternatives: (json['alternatives'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList(),
-      category: json['category'] as String?,
+      id: safeString(json['id']) ?? '',
+      action: safeString(json['action']) ?? '',
+      reasoning: safeString(json['reasoning']) ?? '',
+      alternatives: alternatives,
+      category: safeString(json['category']),
       timestamp: _parseTimestamp(json['timestamp']),
     );
   }
@@ -76,11 +87,17 @@ class JobConfidence {
   });
 
   factory JobConfidence.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
     return JobConfidence(
       score: _parseScore(json['score']),
-      assessment: json['assessment'] as String? ?? 'MEDIUM',
-      reasoning: json['reasoning'] as String? ?? '',
-      risks: json['risks'] as String?,
+      assessment: safeString(json['assessment']) ?? 'MEDIUM',
+      reasoning: safeString(json['reasoning']) ?? '',
+      risks: safeString(json['risks']),
     );
   }
 

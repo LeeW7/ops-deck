@@ -60,16 +60,28 @@ class QuickSession {
   });
 
   factory QuickSession.fromJson(Map<String, dynamic> json) {
+    // Helper to safely cast to String with type check
+    String? safeString(dynamic value) {
+      if (value is String) return value;
+      return null;
+    }
+
+    // Helper to safely cast to num with type check
+    num? safeNum(dynamic value) {
+      if (value is num) return value;
+      return null;
+    }
+
     return QuickSession(
-      id: json['id'] as String? ?? '',
-      repo: json['repo'] as String? ?? '',
-      status: SessionStatus.fromString(json['status'] as String? ?? 'idle'),
-      worktreePath: json['worktree_path'] as String?,
-      claudeSessionId: json['claude_session_id'] as String?,
+      id: safeString(json['id']) ?? '',
+      repo: safeString(json['repo']) ?? '',
+      status: SessionStatus.fromString(safeString(json['status']) ?? 'idle'),
+      worktreePath: safeString(json['worktree_path']),
+      claudeSessionId: safeString(json['claude_session_id']),
       createdAt: _parseDateTime(json['created_at']),
       lastActivity: _parseDateTime(json['last_activity']),
-      messageCount: (json['message_count'] as num?)?.toInt() ?? 0,
-      totalCostUsd: (json['total_cost_usd'] as num?)?.toDouble() ?? 0.0,
+      messageCount: safeNum(json['message_count'])?.toInt() ?? 0,
+      totalCostUsd: safeNum(json['total_cost_usd'])?.toDouble() ?? 0.0,
     );
   }
 
