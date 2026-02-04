@@ -22,7 +22,7 @@ jobs:
 
       - name: Setup release signing
         run: |
-          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 --decode > android/app/ops-deck-release.keystore
+          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 -d > android/app/ops-deck-release.keystore
           echo "storeFile=ops-deck-release.keystore" > android/key.properties
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
