@@ -287,7 +287,20 @@ class ApiService {
     final response = await _getWithRetry('/repos');
 
     if (response.statusCode == 200) {
-      final List<dynamic> data = _parseJson(response) as List<dynamic>;
+      final parsed = _parseJson(response);
+
+      // Handle different response formats
+      List<dynamic> data;
+      if (parsed is List) {
+        data = parsed;
+      } else if (parsed is Map<String, dynamic> && parsed['repos'] is List) {
+        // Handle {"repos": [...]} format
+        data = parsed['repos'] as List;
+      } else {
+        // Unexpected format - return empty list
+        return [];
+      }
+
       return data.map((repo) {
         if (repo is! Map<String, dynamic>) {
           return <String, String>{
