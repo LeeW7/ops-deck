@@ -252,6 +252,19 @@ class JobCacheService {
     }
   }
 
+  /// Force clear all job data (for force refresh)
+  /// Clears jobs but preserves hidden issues list
+  Future<void> forceRefreshCache() async {
+    final db = await database;
+    await db.delete('jobs');
+    await db.delete('metadata');
+    _lastSyncTime = null;
+
+    if (kDebugMode) {
+      print('[JobCache] Force refresh: all job data cleared');
+    }
+  }
+
   /// Update last sync time
   Future<void> updateLastSyncTime() async {
     final db = await database;

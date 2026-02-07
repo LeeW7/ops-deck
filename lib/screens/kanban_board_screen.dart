@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/issue_model.dart';
@@ -9,6 +10,7 @@ import '../widgets/kanban/done_column_header.dart';
 import '../widgets/kanban/issue_context_menu.dart';
 import '../widgets/dialogs/remove_confirmation_dialog.dart';
 import '../widgets/dialogs/close_issue_dialog.dart';
+import '../widgets/dialogs/force_refresh_dialog.dart';
 import 'issue_detail_screen.dart';
 import 'issue_search_screen.dart';
 import 'create_issue_screen.dart';
@@ -51,6 +53,49 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
         provider.startRealTimeUpdates();
       }
     });
+  }
+
+  /// Handle normal refresh (tap)
+  Future<void> _handleRefresh() async {
+    await context.read<IssueBoardProvider>().fetchJobs();
+  }
+
+  /// Handle force refresh (long-press)
+  Future<void> _handleForceRefresh() async {
+    HapticFeedback.mediumImpact();
+    final confirmed = await ForceRefreshDialog.show(context);
+    if (!confirmed || !mounted) return;
+
+    final provider = context.read<IssueBoardProvider>();
+    await provider.forceRefresh();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Color(0xFF3FB950), size: 20),
+            SizedBox(width: 8),
+            Text('Cache cleared and data refreshed'),
+          ],
+        ),
+        backgroundColor: Color(0xFF161B22),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Build refresh button with long-press support
+  Widget _buildRefreshButton(BuildContext context) {
+    return GestureDetector(
+      onLongPress: _handleForceRefresh,
+      child: IconButton(
+        icon: const Icon(Icons.refresh),
+        tooltip: 'Refresh (long-press for force refresh)',
+        onPressed: _handleRefresh,
+      ),
+    );
   }
 
   @override
@@ -106,6 +151,8 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
           tooltip: 'Search issues',
           onPressed: () => _openSearch(context),
         ),
+        // Refresh button with long-press for force refresh
+        _buildRefreshButton(context),
         // Settings
         IconButton(
           icon: const Icon(Icons.settings_outlined),

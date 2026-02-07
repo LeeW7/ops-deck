@@ -872,6 +872,41 @@ class IssueBoardProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Force refresh all data by clearing cache, reconnecting WebSocket, and fetching fresh data
+  /// Use this when jobs appear stuck or cached data seems stale
+  Future<void> forceRefresh() async {
+    if (kDebugMode) {
+      print('[IssueBoardProvider] Force refresh initiated');
+    }
+
+    // 1. Clear in-memory state
+    _issues.clear();
+    _cacheLoaded = false;
+    _error = null;
+    _isLoading = true;
+    notifyListeners();
+
+    // 2. Clear SQLite cache (preserves hidden issues)
+    await _cache.forceRefreshCache();
+
+    // 3. Disconnect and reconnect WebSocket
+    _eventsSubscription?.cancel();
+    _eventsSubscription = null;
+    _connectionSubscription?.cancel();
+    _connectionSubscription = null;
+    _globalEvents.disconnect();
+
+    // 4. Reconnect WebSocket
+    _connectWebSocket();
+
+    // 5. Fetch fresh data from server
+    await fetchJobs();
+
+    if (kDebugMode) {
+      print('[IssueBoardProvider] Force refresh complete');
+    }
+  }
+
   // ============================================================================
   // Hidden Issues Methods
   // ============================================================================
