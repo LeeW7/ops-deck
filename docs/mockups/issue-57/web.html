@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1440, initial-scale=1.0">
+  <title>Issue #57 - Job Status Sync Bug Fix (Desktop)</title>
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <style>
+    :root {
+      --color-primary: #CB2323;
+      --color-primary-dark: #A01D1D;
+      --color-secondary: #DDA64E;
+      --color-accent: #5E7037;
+      --color-success: #10B981;
+      --color-warning: #F59E0B;
+      --color-error: #EF4444;
+      --color-info: #3B82F6;
+      --color-background: #FFFFFF;
+      --color-background-secondary: #FAFAF9;
+      --color-surface: #FFFFFF;
+      --color-text-primary: #1C1917;
+      --color-text-secondary: #57534E;
+      --color-text-tertiary: #78716C;
+      --color-border: #E7E5E4;
+      --font-family: 'Lato', -apple-system, BlinkMacSystemFont, sans-serif;
+      --spacing-1: 4px;
+      --spacing-2: 8px;
+      --spacing-4: 16px;
+      --spacing-6: 24px;
+      --spacing-8: 32px;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: var(--color-background-secondary);
+      color: var(--color-text-primary);
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--color-primary);
+      color: white;
+      padding: var(--spacing-6);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-4);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: var(--spacing-6);
+      padding: var(--spacing-6);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-4);
+    }
+
+    .section {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-6);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--spacing-4);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .bug-description {
+      background: #FEF3C7;
+      border-left: 4px solid var(--color-warning);
+      padding: var(--spacing-4);
+      border-radius: var(--radius-md);
+    }
+
+    .bug-title {
+      font-weight: 600;
+      color: #92400E;
+      margin-bottom: var(--spacing-2);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .bug-text {
+      color: #78350F;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .architecture-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-4);
+    }
+
+    .arch-layer {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-4);
+      padding: var(--spacing-4);
+      background: var(--color-background-secondary);
+      border-radius: var(--radius-md);
+      border: 2px solid var(--color-border);
+    }
+
+    .arch-layer.highlight {
+      border-color: var(--color-error);
+      background: #FEF2F2;
+    }
+
+    .arch-layer.fix {
+      border-color: var(--color-success);
+      background: #F0FDF4;
+    }
+
+    .arch-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-md);
+      background: var(--color-primary);
+      color: white;
+      font-size: 24px;
+    }
+
+    .arch-layer.highlight .arch-icon {
+      background: var(--color-error);
+    }
+
+    .arch-layer.fix .arch-icon {
+      background: var(--color-success);
+    }
+
+    .arch-content {
+      flex: 1;
+    }
+
+    .arch-title {
+      font-weight: 600;
+      margin-bottom: var(--spacing-1);
+    }
+
+    .arch-desc {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+
+    .arch-file {
+      font-family: 'Monaco', monospace;
+      font-size: 12px;
+      color: var(--color-text-tertiary);
+      background: rgba(0,0,0,0.05);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+    }
+
+    .flow-arrow {
+      text-align: center;
+      color: var(--color-text-tertiary);
+      font-size: 20px;
+    }
+
+    .code-block {
+      background: #1F2937;
+      color: #E5E7EB;
+      padding: var(--spacing-6);
+      border-radius: var(--radius-md);
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.6;
+    }
+
+    .code-comment {
+      color: #9CA3AF;
+    }
+
+    .code-keyword {
+      color: #F472B6;
+    }
+
+    .code-string {
+      color: #A5D6A7;
+    }
+
+    .code-type {
+      color: #60A5FA;
+    }
+
+    .code-highlight {
+      background: rgba(16, 185, 129, 0.3);
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+
+    .code-problem {
+      background: rgba(239, 68, 68, 0.3);
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+
+    .fix-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--spacing-4);
+    }
+
+    .fix-card {
+      padding: var(--spacing-4);
+      background: var(--color-background-secondary);
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--color-primary);
+    }
+
+    .fix-number {
+      width: 28px;
+      height: 28px;
+      background: var(--color-primary);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: var(--spacing-2);
+    }
+
+    .fix-title {
+      font-weight: 600;
+      margin-bottom: var(--spacing-2);
+    }
+
+    .fix-desc {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--spacing-4);
+    }
+
+    .comparison-box {
+      padding: var(--spacing-4);
+      border-radius: var(--radius-md);
+    }
+
+    .comparison-box.before {
+      background: #FEE2E2;
+    }
+
+    .comparison-box.after {
+      background: #D1FAE5;
+    }
+
+    .comparison-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: var(--spacing-2);
+    }
+
+    .comparison-box.before .comparison-label {
+      color: var(--color-error);
+    }
+
+    .comparison-box.after .comparison-label {
+      color: var(--color-success);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: var(--spacing-1) var(--spacing-2);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-running {
+      background: #DBEAFE;
+      color: #1D4ED8;
+    }
+
+    .status-done {
+      background: #D1FAE5;
+      color: #047857;
+    }
+
+    .kanban-preview {
+      display: flex;
+      gap: var(--spacing-4);
+      padding: var(--spacing-4);
+      background: #F5F5F4;
+      border-radius: var(--radius-md);
+      overflow-x: auto;
+    }
+
+    .kanban-column {
+      min-width: 200px;
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-2);
+    }
+
+    .kanban-header {
+      padding: var(--spacing-2);
+      font-weight: 600;
+      font-size: 14px;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .kanban-card {
+      padding: var(--spacing-2);
+      background: var(--color-background-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: var(--spacing-1);
+    }
+
+    .kanban-card.highlight {
+      border: 2px solid var(--color-success);
+      background: #F0FDF4;
+    }
+
+    .tabs {
+      display: flex;
+      gap: var(--spacing-2);
+      margin-bottom: var(--spacing-4);
+    }
+
+    .tab {
+      padding: var(--spacing-2) var(--spacing-4);
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      cursor: pointer;
+      background: var(--color-background-secondary);
+    }
+
+    .tab.active {
+      background: var(--color-primary);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <ion-icon name="bug-outline" style="font-size: 32px;"></ion-icon>
+    <h1>Issue #57: Job Stuck Running But It's Complete</h1>
+  </div>
+
+  <div class="main-content">
+    <div class="sidebar">
+      <div class="bug-description">
+        <div class="bug-title">
+          <ion-icon name="warning-outline"></ion-icon>
+          Bug Report
+        </div>
+        <div class="bug-text">
+          User ran a retrospective job which completed successfully (received notification). However, the issue card on the Kanban board remains stuck in the "Running" column instead of moving to "Done".
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Before vs After</div>
+        <div class="comparison">
+          <div class="comparison-box before">
+            <div class="comparison-label">Before</div>
+            <span class="status-badge status-running">Running</span>
+            <div style="font-size: 12px; margin-top: 8px; color: var(--color-text-secondary);">
+              Job completed but issue stuck
+            </div>
+          </div>
+          <div class="comparison-box after">
+            <div class="comparison-label">After</div>
+            <span class="status-badge status-done">Done</span>
+            <div style="font-size: 12px; margin-top: 8px; color: var(--color-text-secondary);">
+              Issue moves correctly
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Files to Modify</div>
+        <ul style="list-style: none; font-size: 14px;">
+          <li style="padding: 8px 0; border-bottom: 1px solid var(--color-border);">
+            <code>lib/providers/issue_board_provider.dart</code>
+          </li>
+          <li style="padding: 8px 0; border-bottom: 1px solid var(--color-border);">
+            <code>lib/models/job_model.dart</code>
+          </li>
+          <li style="padding: 8px 0; border-bottom: 1px solid var(--color-border);">
+            <code>lib/services/job_cache_service.dart</code>
+          </li>
+          <li style="padding: 8px 0;">
+            <code>lib/models/issue_model.dart</code>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: var(--spacing-6);">
+      <div class="section">
+        <div class="section-title">Root Cause Analysis</div>
+        <div class="architecture-diagram">
+          <div class="arch-layer">
+            <div class="arch-icon">
+              <ion-icon name="cloud-outline"></ion-icon>
+            </div>
+            <div class="arch-content">
+              <div class="arch-title">Server sends jobCompleted event</div>
+              <div class="arch-desc">WebSocket broadcasts job lifecycle event with status: "completed"</div>
+            </div>
+          </div>
+
+          <div class="flow-arrow">↓</div>
+
+          <div class="arch-layer">
+            <div class="arch-icon">
+              <ion-icon name="swap-horizontal-outline"></ion-icon>
+            </div>
+            <div class="arch-content">
+              <div class="arch-title">GlobalEventsService receives event</div>
+              <div class="arch-desc">Event parsed and broadcast to subscribers</div>
+              <span class="arch-file">lib/services/websocket_service.dart:884</span>
+            </div>
+          </div>
+
+          <div class="flow-arrow">↓</div>
+
+          <div class="arch-layer highlight">
+            <div class="arch-icon">
+              <ion-icon name="alert-circle-outline"></ion-icon>
+            </div>
+            <div class="arch-content">
+              <div class="arch-title">Issue: Job ID Mismatch in Update</div>
+              <div class="arch-desc">
+                When updating the issue's job list, the job matching uses <code>j.issueId == jobData.id</code>.
+                If the IDs don't match exactly, a new job is added instead of updating the existing one.
+              </div>
+              <span class="arch-file">lib/providers/issue_board_provider.dart:399</span>
+            </div>
+          </div>
+
+          <div class="flow-arrow">↓</div>
+
+          <div class="arch-layer highlight">
+            <div class="arch-icon">
+              <ion-icon name="alert-circle-outline"></ion-icon>
+            </div>
+            <div class="arch-content">
+              <div class="arch-title">Issue: HTTP Poll Race Condition</div>
+              <div class="arch-desc">
+                HTTP polling every 60s can return stale job data that overwrites the fresh WebSocket update.
+                No timestamp comparison prevents this race condition.
+              </div>
+              <span class="arch-file">lib/providers/issue_board_provider.dart:497-511</span>
+            </div>
+          </div>
+
+          <div class="flow-arrow">↓</div>
+
+          <div class="arch-layer highlight">
+            <div class="arch-icon">
+              <ion-icon name="alert-circle-outline"></ion-icon>
+            </div>
+            <div class="arch-content">
+              <div class="arch-title">Issue: Original Running Job Not Updated</div>
+              <div class="arch-desc">
+                Issue status derived from ALL jobs. If old "running" job remains in list with status unchanged,
+                <code>Issue.status</code> getter returns <code>IssueStatus.running</code>.
+              </div>
+              <span class="arch-file">lib/models/issue_model.dart:136</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Proposed Fixes</div>
+        <div class="fix-grid">
+          <div class="fix-card">
+            <div class="fix-number">1</div>
+            <div class="fix-title">Track Job Update Timestamps</div>
+            <div class="fix-desc">
+              Add <code>lastUpdated</code> timestamp to Job model. Compare timestamps before applying updates to prevent stale data from overwriting fresh WebSocket events.
+            </div>
+          </div>
+          <div class="fix-card">
+            <div class="fix-number">2</div>
+            <div class="fix-title">Force Status from Terminal Events</div>
+            <div class="fix-desc">
+              For <code>jobCompleted</code> and <code>jobFailed</code> events, always set the status to the terminal state regardless of what's in the event payload.
+            </div>
+          </div>
+          <div class="fix-card">
+            <div class="fix-number">3</div>
+            <div class="fix-title">Add Debug Logging</div>
+            <div class="fix-desc">
+              Log job ID, status changes, and timestamp comparisons to diagnose future sync issues. Include before/after state in logs.
+            </div>
+          </div>
+          <div class="fix-card">
+            <div class="fix-number">4</div>
+            <div class="fix-title">Force Refresh Action</div>
+            <div class="fix-desc">
+              Add pull-to-refresh or manual refresh button that clears local cache and re-fetches all job data from server.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Key Code Changes</div>
+        <div class="code-block"><span class="code-comment">// lib/providers/issue_board_provider.dart</span>
+<span class="code-comment">// Fix 1: Add timestamp tracking in _updateIssueFromEvent</span>
+
+<span class="code-keyword">void</span> <span class="code-type">_updateIssueFromEvent</span>(String issueKey, JobEventData jobData) {
+  <span class="code-comment">// ... existing code ...</span>
+
+  <span class="code-keyword">for</span> (<span class="code-keyword">final</span> j <span class="code-keyword">in</span> issue.jobs) {
+    <span class="code-keyword">if</span> (j.issueId == jobData.id) {
+      <span class="code-highlight">// NEW: Check if this update is newer than existing data</span>
+      <span class="code-highlight"><span class="code-keyword">if</span> (j.updatedAt != null && jobData.timestamp != null) {</span>
+      <span class="code-highlight">  <span class="code-keyword">if</span> (j.updatedAt!.isAfter(jobData.timestamp!)) {</span>
+      <span class="code-highlight">    updatedJobs.add(j); <span class="code-comment">// Keep existing, skip stale update</span></span>
+      <span class="code-highlight">    jobFound = true;</span>
+      <span class="code-highlight">    <span class="code-keyword">continue</span>;</span>
+      <span class="code-highlight">  }</span>
+      <span class="code-highlight">}</span>
+
+      <span class="code-comment">// Update existing job with new status</span>
+      updatedJobs.add(Job(
+        <span class="code-comment">// ... existing fields ...</span>
+        <span class="code-highlight">status: jobData.status,</span>
+        <span class="code-highlight">updatedAt: DateTime.now(),</span>
+      ));
+      jobFound = <span class="code-keyword">true</span>;
+    } <span class="code-keyword">else</span> {
+      updatedJobs.add(j);
+    }
+  }
+}</div>
+        <br>
+        <div class="code-block"><span class="code-comment">// lib/providers/issue_board_provider.dart</span>
+<span class="code-comment">// Fix 2: Ensure terminal events always set correct status</span>
+
+<span class="code-keyword">case</span> JobEventType.jobCompleted:
+  <span class="code-highlight"><span class="code-comment">// Always use 'completed' status for terminal completion events</span></span>
+  <span class="code-highlight"><span class="code-keyword">final</span> completedStatus = <span class="code-string">'completed'</span>;</span>
+  <span class="code-keyword">final</span> completedJob = JobEventData(
+    id: job.id,
+    repo: job.repo,
+    issueNum: job.issueNum,
+    issueTitle: job.issueTitle,
+    command: job.command,
+    <span class="code-highlight">status: completedStatus,</span> <span class="code-comment">// Force completed status</span>
+    cost: job.cost,
+  );
+  _updateIssueFromEvent(issueKey, completedJob);
+  <span class="code-keyword">break</span>;</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Expected Behavior After Fix</div>
+        <div class="kanban-preview">
+          <div class="kanban-column">
+            <div class="kanban-header">Needs Action</div>
+            <div class="kanban-card">Issue #48</div>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-header">Running</div>
+            <div class="kanban-card">Issue #59</div>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-header">Failed</div>
+            <div class="kanban-card" style="opacity: 0.5;">(empty)</div>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-header">Done</div>
+            <div class="kanban-card highlight">Issue #55 ✓</div>
+            <div class="kanban-card">Issue #54</div>
+          </div>
+        </div>
+        <p style="font-size: 14px; color: var(--color-text-secondary); margin-top: 16px;">
+          After the fix, Issue #55 correctly moves to the "Done" column when the retrospective job completes.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

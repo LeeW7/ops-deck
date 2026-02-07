@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=430, initial-scale=1.0">
+  <title>Issue #57 - Job Status Sync Bug Fix</title>
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <style>
+    :root {
+      --color-primary: #CB2323;
+      --color-primary-dark: #A01D1D;
+      --color-secondary: #DDA64E;
+      --color-accent: #5E7037;
+      --color-success: #10B981;
+      --color-warning: #F59E0B;
+      --color-error: #EF4444;
+      --color-info: #3B82F6;
+      --color-background: #FFFFFF;
+      --color-background-secondary: #FAFAF9;
+      --color-surface: #FFFFFF;
+      --color-text-primary: #1C1917;
+      --color-text-secondary: #57534E;
+      --color-text-tertiary: #78716C;
+      --color-border: #E7E5E4;
+      --font-family: 'Lato', -apple-system, BlinkMacSystemFont, sans-serif;
+      --spacing-1: 4px;
+      --spacing-2: 8px;
+      --spacing-4: 16px;
+      --spacing-6: 24px;
+      --spacing-8: 32px;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: var(--color-background-secondary);
+      color: var(--color-text-primary);
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--color-primary);
+      color: white;
+      padding: var(--spacing-4);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .content {
+      padding: var(--spacing-4);
+    }
+
+    .section {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-4);
+      margin-bottom: var(--spacing-4);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--spacing-4);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .bug-description {
+      background: #FEF3C7;
+      border-left: 4px solid var(--color-warning);
+      padding: var(--spacing-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--spacing-4);
+    }
+
+    .bug-title {
+      font-weight: 600;
+      color: #92400E;
+      margin-bottom: var(--spacing-2);
+    }
+
+    .bug-text {
+      color: #78350F;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .flow-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-2);
+    }
+
+    .flow-step {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2);
+      background: var(--color-background-secondary);
+      border-radius: var(--radius-md);
+    }
+
+    .flow-step.problem {
+      background: #FEE2E2;
+      border: 2px dashed var(--color-error);
+    }
+
+    .flow-step.fix {
+      background: #D1FAE5;
+      border: 2px solid var(--color-success);
+    }
+
+    .flow-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--color-primary);
+      color: white;
+      font-size: 14px;
+    }
+
+    .flow-icon.problem {
+      background: var(--color-error);
+    }
+
+    .flow-icon.fix {
+      background: var(--color-success);
+    }
+
+    .flow-arrow {
+      text-align: center;
+      color: var(--color-text-tertiary);
+    }
+
+    .code-block {
+      background: #1F2937;
+      color: #E5E7EB;
+      padding: var(--spacing-4);
+      border-radius: var(--radius-md);
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .code-comment {
+      color: #9CA3AF;
+    }
+
+    .code-keyword {
+      color: #F472B6;
+    }
+
+    .code-string {
+      color: #A5D6A7;
+    }
+
+    .code-highlight {
+      background: rgba(16, 185, 129, 0.3);
+      display: inline;
+    }
+
+    .issue-card {
+      display: flex;
+      gap: var(--spacing-4);
+      padding: var(--spacing-4);
+      background: var(--color-background-secondary);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .status-badge {
+      padding: var(--spacing-1) var(--spacing-2);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-running {
+      background: #DBEAFE;
+      color: #1D4ED8;
+    }
+
+    .status-done {
+      background: #D1FAE5;
+      color: #047857;
+    }
+
+    .fix-list {
+      list-style: none;
+    }
+
+    .fix-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2) 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .fix-list li:last-child {
+      border-bottom: none;
+    }
+
+    .fix-number {
+      width: 24px;
+      height: 24px;
+      background: var(--color-primary);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .fix-content {
+      flex: 1;
+    }
+
+    .fix-title {
+      font-weight: 600;
+      margin-bottom: var(--spacing-1);
+    }
+
+    .fix-desc {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--spacing-4);
+    }
+
+    .comparison-box {
+      padding: var(--spacing-4);
+      border-radius: var(--radius-md);
+    }
+
+    .comparison-box.before {
+      background: #FEE2E2;
+    }
+
+    .comparison-box.after {
+      background: #D1FAE5;
+    }
+
+    .comparison-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: var(--spacing-2);
+    }
+
+    .comparison-box.before .comparison-label {
+      color: var(--color-error);
+    }
+
+    .comparison-box.after .comparison-label {
+      color: var(--color-success);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <ion-icon name="bug-outline" style="font-size: 24px;"></ion-icon>
+    <h1>Issue #57: Job Status Sync Bug</h1>
+  </div>
+
+  <div class="content">
+    <div class="bug-description">
+      <div class="bug-title">
+        <ion-icon name="warning-outline"></ion-icon>
+        Bug Description
+      </div>
+      <div class="bug-text">
+        Issue remains in "Running" column after job completes. The retrospective job finished successfully and the user received a completion notification, but the Kanban card still shows as running.
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Before vs After</div>
+      <div class="comparison">
+        <div class="comparison-box before">
+          <div class="comparison-label">Before Fix</div>
+          <div class="issue-card">
+            <span class="status-badge status-running">Running</span>
+            <span style="font-size: 12px;">Issue #55</span>
+          </div>
+          <div style="font-size: 12px; color: var(--color-text-tertiary);">
+            Job completed but issue stuck in Running column
+          </div>
+        </div>
+        <div class="comparison-box after">
+          <div class="comparison-label">After Fix</div>
+          <div class="issue-card">
+            <span class="status-badge status-done">Done</span>
+            <span style="font-size: 12px;">Issue #55</span>
+          </div>
+          <div style="font-size: 12px; color: var(--color-text-tertiary);">
+            Issue moves to Done after job completes
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Root Cause Analysis</div>
+      <div class="flow-diagram">
+        <div class="flow-step">
+          <div class="flow-icon">1</div>
+          <div>Server sends <code>jobCompleted</code> WebSocket event</div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step problem">
+          <div class="flow-icon problem">2</div>
+          <div><strong>Problem:</strong> Job ID mismatch or stale cache prevents update</div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step problem">
+          <div class="flow-icon problem">3</div>
+          <div><strong>Problem:</strong> HTTP poll returns old data after WS update</div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step fix">
+          <div class="flow-icon fix">✓</div>
+          <div><strong>Fix:</strong> Add timestamp validation and force refresh</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Proposed Fixes</div>
+      <ul class="fix-list">
+        <li>
+          <div class="fix-number">1</div>
+          <div class="fix-content">
+            <div class="fix-title">Add Timestamp Validation</div>
+            <div class="fix-desc">Prevent older HTTP poll data from overwriting newer WebSocket updates by comparing timestamps</div>
+          </div>
+        </li>
+        <li>
+          <div class="fix-number">2</div>
+          <div class="fix-content">
+            <div class="fix-title">Improve Job ID Matching</div>
+            <div class="fix-desc">Ensure job updates use the same ID format for matching (issueId field)</div>
+          </div>
+        </li>
+        <li>
+          <div class="fix-number">3</div>
+          <div class="fix-content">
+            <div class="fix-title">Add Manual Refresh</div>
+            <div class="fix-desc">Allow users to force refresh to recover from stuck states</div>
+          </div>
+        </li>
+        <li>
+          <div class="fix-number">4</div>
+          <div class="fix-content">
+            <div class="fix-title">Debug Logging</div>
+            <div class="fix-desc">Add detailed logging to diagnose future status sync issues</div>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Key Code Changes</div>
+      <div class="code-block"><span class="code-comment">// issue_board_provider.dart - _updateIssueFromEvent</span>
+
+<span class="code-comment">// Add timestamp comparison to prevent stale updates</span>
+<span class="code-keyword">if</span> (existingJob.updatedAt.isAfter(jobData.timestamp)) {
+  <span class="code-keyword">return</span>; <span class="code-comment">// Skip stale update</span>
+}
+
+<span class="code-comment">// Always update status from terminal events</span>
+<span class="code-keyword">if</span> (event.type == JobEventType.jobCompleted ||
+    event.type == JobEventType.jobFailed) {
+  <span class="code-highlight">status = event.type.terminalStatus;</span>
+}</div>
+    </div>
+  </div>
+</body>
+</html>

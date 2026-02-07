@@ -268,38 +268,46 @@ class IssueBoardProvider with ChangeNotifier {
         notifyListeners();
         break;
       case JobEventType.jobCompleted:
-        // Ensure status is 'completed' even if not in event payload
+        // ALWAYS force 'completed' status - this is a terminal event
+        // The server sent jobCompleted, so the job IS completed regardless of payload status
         final completedJob = JobEventData(
           id: job.id,
           repo: job.repo,
           issueNum: job.issueNum,
           issueTitle: job.issueTitle,
           command: job.command,
-          status: job.status.isEmpty ? 'completed' : job.status,
+          status: 'completed', // Force terminal status
           cost: job.cost,
           preview: job.preview,
           testResults: job.testResults,
         );
+        if (kDebugMode) {
+          print('[IssueBoardProvider] Forcing status=completed for job ${job.id} (was: ${job.status})');
+        }
         _updateIssueFromEvent(issueKey, completedJob);
-        _cache.updateJobStatus(completedJob.id, completedJob.status);
+        _cache.updateJobStatus(completedJob.id, 'completed');
         _maybeShowNotification(event);
         notifyListeners();
         break;
       case JobEventType.jobFailed:
-        // Ensure status is 'failed' even if not in event payload
+        // ALWAYS force 'failed' status - this is a terminal event
+        // The server sent jobFailed, so the job IS failed regardless of payload status
         final failedJob = JobEventData(
           id: job.id,
           repo: job.repo,
           issueNum: job.issueNum,
           issueTitle: job.issueTitle,
           command: job.command,
-          status: job.status.isEmpty ? 'failed' : job.status,
+          status: 'failed', // Force terminal status
           cost: job.cost,
           preview: job.preview,
           testResults: job.testResults,
         );
+        if (kDebugMode) {
+          print('[IssueBoardProvider] Forcing status=failed for job ${job.id} (was: ${job.status})');
+        }
         _updateIssueFromEvent(issueKey, failedJob);
-        _cache.updateJobStatus(failedJob.id, failedJob.status);
+        _cache.updateJobStatus(failedJob.id, 'failed');
         _maybeShowNotification(event);
         notifyListeners();
         break;
@@ -340,6 +348,22 @@ class IssueBoardProvider with ChangeNotifier {
         command: job.command,
       );
     }
+  }
+
+  /// Normalize job ID for comparison
+  /// Handles different ID formats between WebSocket and HTTP sources
+  String _normalizeJobId(String id) {
+    // Remove common prefixes/suffixes that might differ between sources
+    return id.trim().toLowerCase();
+  }
+
+  /// Check if two job IDs match (handles format differences)
+  bool _jobIdsMatch(String id1, String id2) {
+    // Direct match
+    if (id1 == id2) return true;
+    // Normalized match
+    if (_normalizeJobId(id1) == _normalizeJobId(id2)) return true;
+    return false;
   }
 
   /// Update issue state from a job event
@@ -383,6 +407,10 @@ class IssueBoardProvider with ChangeNotifier {
         updatedAt: now,
       );
 
+      if (kDebugMode) {
+        print('[IssueBoardProvider] Creating new issue $issueKey with job ${jobData.id} status=${jobData.status}');
+      }
+
       issue = Issue.fromJobs(
         issueNum: jobData.issueNum,
         repo: jobData.repo,
@@ -396,7 +424,11 @@ class IssueBoardProvider with ChangeNotifier {
       bool jobFound = false;
 
       for (final j in issue.jobs) {
-        if (j.issueId == jobData.id) {
+        // Use improved job ID matching that handles format differences
+        if (_jobIdsMatch(j.issueId, jobData.id)) {
+          if (kDebugMode) {
+            print('[IssueBoardProvider] Updating job ${j.issueId}: ${j.status} -> ${jobData.status}');
+          }
           // Update existing job with new status
           updatedJobs.add(Job(
             issueId: j.issueId,
@@ -424,6 +456,11 @@ class IssueBoardProvider with ChangeNotifier {
 
       // Add new job if not found
       if (!jobFound) {
+        if (kDebugMode) {
+          print('[IssueBoardProvider] No matching job found for ${jobData.id}, adding new job with status=${jobData.status}');
+          // Log existing job IDs for debugging
+          print('[IssueBoardProvider] Existing job IDs: ${issue.jobs.map((j) => j.issueId).toList()}');
+        }
         updatedJobs.add(Job(
           issueId: jobData.id,
           repo: jobData.repo,
@@ -544,8 +581,25 @@ class IssueBoardProvider with ChangeNotifier {
     return false;
   }
 
-  /// Aggregate jobs into issues
+  /// Aggregate jobs into issues, preserving terminal status from existing jobs
+  /// This prevents stale HTTP poll data from overwriting fresh WebSocket updates
   Map<String, Issue> _aggregateJobsIntoIssues(Map<String, Job> jobs) {
+    // Build a map of existing jobs with terminal status (completed/failed)
+    // These should not be overwritten by HTTP poll data
+    final Map<String, Job> terminalJobs = {};
+    for (final issue in _issues.values) {
+      for (final job in issue.jobs) {
+        if (job.isTerminal) {
+          terminalJobs[job.issueId] = job;
+          // Also store with normalized ID
+          final normalizedId = _normalizeJobId(job.issueId);
+          if (normalizedId != job.issueId) {
+            terminalJobs[normalizedId] = job;
+          }
+        }
+      }
+    }
+
     // Group jobs by issue key (repoSlug-issueNum)
     final Map<String, List<Job>> jobsByIssue = {};
 
@@ -554,7 +608,41 @@ class IssueBoardProvider with ChangeNotifier {
       final issueKey = '$repoSlug-${job.issueNum}';
 
       jobsByIssue.putIfAbsent(issueKey, () => []);
-      jobsByIssue[issueKey]!.add(job);
+
+      // Check if we have an existing terminal job that should be preserved
+      final existingTerminal = terminalJobs[job.issueId] ?? terminalJobs[_normalizeJobId(job.issueId)];
+
+      if (existingTerminal != null && !job.isTerminal) {
+        // HTTP poll returned non-terminal status for a job we know is terminal
+        // This is stale data - preserve the terminal status
+        if (kDebugMode) {
+          print('[IssueBoardProvider] Preserving terminal status for job ${job.issueId}: '
+              'HTTP returned "${job.status}" but we have "${existingTerminal.status}"');
+        }
+        jobsByIssue[issueKey]!.add(Job(
+          issueId: job.issueId,
+          status: existingTerminal.status, // Preserve terminal status
+          command: job.command,
+          startTime: job.startTime,
+          completedTime: existingTerminal.completedTime ?? job.completedTime,
+          error: existingTerminal.error ?? job.error,
+          repo: job.repo,
+          repoSlug: job.repoSlug,
+          issueTitle: job.issueTitle,
+          issueNum: job.issueNum,
+          logPath: job.logPath,
+          localPath: job.localPath,
+          fullCommand: job.fullCommand,
+          cost: existingTerminal.cost ?? job.cost,
+          createdAt: job.createdAt,
+          updatedAt: existingTerminal.updatedAt, // Keep the more recent update time
+          decisions: existingTerminal.decisions.isNotEmpty ? existingTerminal.decisions : job.decisions,
+          confidence: existingTerminal.confidence ?? job.confidence,
+          lastServerUpdate: existingTerminal.lastServerUpdate,
+        ));
+      } else {
+        jobsByIssue[issueKey]!.add(job);
+      }
     }
 
     // Create Issue objects from grouped jobs
