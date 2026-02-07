@@ -71,13 +71,31 @@ class _IssueCardState extends State<IssueCard> {
             color: const Color(0xFF21262D),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: const Color(0xFF30363D),
-              width: 1,
+              color: widget.issue.hasPotentiallyStuckJob
+                  ? const Color(0xFFF59E0B) // Warning orange for stuck jobs
+                  : const Color(0xFF30363D),
+              width: widget.issue.hasPotentiallyStuckJob ? 2 : 1,
             ),
+            // Subtle gradient overlay for stuck jobs
+            gradient: widget.issue.hasPotentiallyStuckJob
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0x15F59E0B), // ~8% warning orange
+                      Color(0x0021262D), // transparent
+                    ],
+                  )
+                : null,
           ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Stuck job warning badge
+                    if (widget.issue.hasPotentiallyStuckJob) ...[
+                      _buildStuckBadge(),
+                      const SizedBox(height: 8),
+                    ],
                     // Header row: repo + issue number
                     _buildHeader(context, statusColor),
                     const SizedBox(height: 8),
@@ -104,6 +122,51 @@ class _IssueCardState extends State<IssueCard> {
         ),
       ),
     );
+  }
+
+  Widget _buildStuckBadge() {
+    final stuckJob = widget.issue.stuckJob;
+    final duration = stuckJob?.runningDuration;
+    final durationText = duration != null
+        ? _formatDuration(duration)
+        : '';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.warning_rounded,
+            size: 12,
+            color: Colors.black,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'POTENTIALLY STUCK${durationText.isNotEmpty ? ' • $durationText' : ''}',
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    return '${minutes}m';
   }
 
   Widget _buildHeader(BuildContext context, Color statusColor) {
@@ -215,8 +278,12 @@ class _IssueCardState extends State<IssueCard> {
   Widget _buildStatusIndicator(Color statusColor) {
     final runningJob = widget.issue.runningJob;
     final failedJob = widget.issue.failedJob;
+    final isStuck = widget.issue.hasPotentiallyStuckJob;
 
     if (runningJob != null) {
+      // Use warning color for stuck jobs
+      final indicatorColor = isStuck ? const Color(0xFFF59E0B) : statusColor;
+
       // Animated running indicator
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -226,7 +293,7 @@ class _IssueCardState extends State<IssueCard> {
             height: 12,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation(statusColor),
+              valueColor: AlwaysStoppedAnimation(indicatorColor),
             ),
           ),
           const SizedBox(width: 4),
@@ -235,7 +302,7 @@ class _IssueCardState extends State<IssueCard> {
             style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 9,
-              color: statusColor,
+              color: indicatorColor,
             ),
           ),
         ],

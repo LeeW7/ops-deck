@@ -204,10 +204,15 @@ class JobCacheService {
   }
 
   /// Update a job's status
+  /// For terminal statuses (completed, failed), this ensures the cache is updated
+  /// even if the job was previously in a non-terminal state
   Future<void> updateJobStatus(String issueId, String status) async {
     final db = await database;
 
-    await db.update(
+    // Check if this is a terminal status transition
+    final isTerminal = status == 'completed' || status == 'failed';
+
+    final updatedCount = await db.update(
       'jobs',
       {
         'status': status,
@@ -216,6 +221,12 @@ class JobCacheService {
       where: 'issue_id = ?',
       whereArgs: [issueId],
     );
+
+    if (kDebugMode && updatedCount > 0) {
+      if (isTerminal) {
+        print('[JobCache] Updated job $issueId to terminal status: $status');
+      }
+    }
   }
 
   /// Delete old jobs (keep last N days)
@@ -249,6 +260,19 @@ class JobCacheService {
 
     if (kDebugMode) {
       print('[JobCache] Cache cleared');
+    }
+  }
+
+  /// Force clear all job data (for force refresh)
+  /// Clears jobs but preserves hidden issues list
+  Future<void> forceRefreshCache() async {
+    final db = await database;
+    await db.delete('jobs');
+    await db.delete('metadata');
+    _lastSyncTime = null;
+
+    if (kDebugMode) {
+      print('[JobCache] Force refresh: all job data cleared');
     }
   }
 

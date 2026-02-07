@@ -198,11 +198,14 @@ class IssueBoardProvider with ChangeNotifier {
   }
 
   /// Load jobs from local cache for instant startup
+  /// Validates cached "running" jobs that are older than 2 hours
   Future<void> _loadFromCache() async {
     try {
       final cachedJobs = await _cache.getAllJobs();
       if (cachedJobs.isNotEmpty) {
-        final jobsMap = {for (var job in cachedJobs) job.issueId: job};
+        // Validate and potentially flag stale running jobs
+        final validatedJobs = _validateCachedJobs(cachedJobs);
+        final jobsMap = {for (var job in validatedJobs) job.issueId: job};
         _issues = _aggregateJobsIntoIssues(jobsMap);
         _cacheLoaded = true;
         if (kDebugMode) {
@@ -215,6 +218,29 @@ class IssueBoardProvider with ChangeNotifier {
         print('[IssueBoardProvider] Cache load error: $e');
       }
     }
+  }
+
+  /// Validate cached jobs on startup
+  /// Jobs with running/pending status older than 2 hours are logged as potentially stale
+  /// They will be corrected when fresh data arrives from WebSocket or HTTP poll
+  List<Job> _validateCachedJobs(List<Job> jobs) {
+    final validatedJobs = <Job>[];
+
+    for (final job in jobs) {
+      // Check if job appears to be stuck (running > 2 hours)
+      if (job.isPotentiallyStuck) {
+        if (kDebugMode) {
+          final duration = job.runningDuration;
+          print('[IssueBoardProvider] Potentially stale cached job detected: '
+              '${job.issueId} (status=${job.status}, running for ${duration.inHours}h ${duration.inMinutes % 60}m)');
+        }
+        // Keep the job as-is but log it - the UI will show the stuck warning badge
+        // Fresh data from server will correct the status if needed
+      }
+      validatedJobs.add(job);
+    }
+
+    return validatedJobs;
   }
 
   /// Save jobs to cache
@@ -261,6 +287,9 @@ class IssueBoardProvider with ChangeNotifier {
     switch (event.type) {
       case JobEventType.jobCreated:
       case JobEventType.jobStatusChanged:
+        if (kDebugMode) {
+          print('[IssueBoardProvider] WebSocket ${event.type}: job=${job.id} status=${job.status}');
+        }
         // Update or create the issue with new job status
         _updateIssueFromEvent(issueKey, job);
         // Update cache with new status
@@ -870,6 +899,41 @@ class IssueBoardProvider with ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  /// Force refresh all data by clearing cache, reconnecting WebSocket, and fetching fresh data
+  /// Use this when jobs appear stuck or cached data seems stale
+  Future<void> forceRefresh() async {
+    if (kDebugMode) {
+      print('[IssueBoardProvider] Force refresh initiated');
+    }
+
+    // 1. Clear in-memory state
+    _issues.clear();
+    _cacheLoaded = false;
+    _error = null;
+    _isLoading = true;
+    notifyListeners();
+
+    // 2. Clear SQLite cache (preserves hidden issues)
+    await _cache.forceRefreshCache();
+
+    // 3. Disconnect and reconnect WebSocket
+    _eventsSubscription?.cancel();
+    _eventsSubscription = null;
+    _connectionSubscription?.cancel();
+    _connectionSubscription = null;
+    _globalEvents.disconnect();
+
+    // 4. Reconnect WebSocket
+    _connectWebSocket();
+
+    // 5. Fetch fresh data from server
+    await fetchJobs();
+
+    if (kDebugMode) {
+      print('[IssueBoardProvider] Force refresh complete');
+    }
   }
 
   // ============================================================================

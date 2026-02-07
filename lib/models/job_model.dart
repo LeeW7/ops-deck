@@ -377,6 +377,23 @@ class Job {
     jobStatus == JobStatus.running ||
     jobStatus == JobStatus.waitingApproval;
 
+  /// Duration the job has been running (from start time to now or completion)
+  Duration get runningDuration {
+    final endTime = completedTime != null
+        ? DateTime.fromMillisecondsSinceEpoch(completedTime! * 1000)
+        : DateTime.now();
+    return endTime.difference(startDateTime);
+  }
+
+  /// Whether the job is potentially stuck (running for more than 2 hours)
+  /// Only applies to jobs with running or pending status
+  bool get isPotentiallyStuck {
+    if (jobStatus != JobStatus.running && jobStatus != JobStatus.pending) {
+      return false;
+    }
+    return runningDuration.inHours >= 2;
+  }
+
   DateTime get startDateTime {
     return DateTime.fromMillisecondsSinceEpoch(startTime * 1000);
   }
