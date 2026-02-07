@@ -193,6 +193,19 @@ class Issue {
     );
   }
 
+  /// Whether any running job on this issue is potentially stuck (running > 2 hours)
+  bool get hasPotentiallyStuckJob {
+    return jobs.any((j) => j.isPotentiallyStuck);
+  }
+
+  /// Get the stuck job (if any)
+  Job? get stuckJob {
+    return jobs.cast<Job?>().firstWhere(
+      (j) => j?.isPotentiallyStuck == true,
+      orElse: () => null,
+    );
+  }
+
   /// Unique key for this issue
   String get key => '$repoSlug-$issueNum';
 
