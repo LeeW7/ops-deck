@@ -195,6 +195,9 @@ class Job {
   final DateTime updatedAt;
   final List<JobDecision> decisions;
   final JobConfidence? confidence;
+  /// Timestamp when this job status was last updated from server
+  /// Used to prevent stale HTTP poll data from overwriting fresh WebSocket updates
+  final DateTime? lastServerUpdate;
 
   Job({
     required this.issueId,
@@ -215,7 +218,12 @@ class Job {
     required this.updatedAt,
     this.decisions = const [],
     this.confidence,
+    this.lastServerUpdate,
   });
+
+  /// Whether this job has a terminal status (completed or failed)
+  bool get isTerminal =>
+      jobStatus == JobStatus.completed || jobStatus == JobStatus.failed;
 
   /// Create from HTTP API response (legacy format)
   factory Job.fromJson(String issueId, Map<String, dynamic> json) {
