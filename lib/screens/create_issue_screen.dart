@@ -27,12 +27,11 @@ class _CreateIssueScreenState extends State<CreateIssueScreen> {
 
   void _syncControllers() {
     if (!mounted || _provider == null) return;
-    // Sync both title and body (AI enhancement updates both)
-    if (_titleController.text != _provider!.title) {
+    // Only sync from provider to controllers when AI enhancement updated them
+    if (_provider!.titleBodyModifiedByAI) {
       _titleController.text = _provider!.title;
-    }
-    if (_bodyController.text != _provider!.body) {
       _bodyController.text = _provider!.body;
+      _provider!.clearTitleBodyModifiedFlag();
     }
   }
 

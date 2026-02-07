@@ -437,6 +437,7 @@ class IssueProvider with ChangeNotifier {
   String? _successMessage;
   List<ScreenshotAttachment> _screenshots = [];
   int _screenshotIdCounter = 0;
+  bool _titleBodyModifiedByAI = false;
 
   List<Map<String, String>> get repos => _repos;
   String? get selectedRepo => _selectedRepo;
@@ -462,6 +463,7 @@ class IssueProvider with ChangeNotifier {
   int get uploadingCount =>
       _screenshots.where((s) => s.status == UploadStatus.uploading).length;
   bool get canAddMoreScreenshots => _screenshots.length < maxScreenshots;
+  bool get titleBodyModifiedByAI => _titleBodyModifiedByAI;
 
   Future<void> fetchRepos() async {
     _isLoading = true;
@@ -487,13 +489,13 @@ class IssueProvider with ChangeNotifier {
   void setTitle(String title) {
     _title = title;
     _successMessage = null;
-    notifyListeners();
+    // Don't call notifyListeners() - avoids rebuilds while typing
   }
 
   void setBody(String body) {
     _body = body;
     _successMessage = null;
-    notifyListeners();
+    // Don't call notifyListeners() - avoids rebuilds while typing
   }
 
   Future<void> enhanceWithAI() async {
@@ -511,6 +513,7 @@ class IssueProvider with ChangeNotifier {
       final enhanced = await _apiService.enhanceIssue(_title, _body, _selectedRepo);
       _title = enhanced['title'] ?? _title;
       _body = enhanced['body'] ?? '';
+      _titleBodyModifiedByAI = true;
       _isEnhancing = false;
       notifyListeners();
     } catch (e) {
@@ -678,6 +681,10 @@ class IssueProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
     }
+  }
+
+  void clearTitleBodyModifiedFlag() {
+    _titleBodyModifiedByAI = false;
   }
 
   void clearForm() {
